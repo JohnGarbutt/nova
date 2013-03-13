@@ -872,6 +872,8 @@ class VMOps(object):
             reason = _('Resize down not allowed without auto_disk_config')
             raise exception.ResizeError(reason=reason)
 
+        # TODO - check disk usage to make sure it is possible to resize down
+
         # 0. Zero out the progress to begin
         self._update_instance_progress(context, instance,
                                        step=0,
