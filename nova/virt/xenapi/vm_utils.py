@@ -733,8 +733,7 @@ def resize_disk(session, instance, vdi_ref, instance_type):
         new_uuid = session.call_xenapi('VDI.get_uuid', new_ref)
 
         # Manually copy contents over
-        virtual_size = instance_type['root_gb'] * 1024 * 1024 * 1024
-        _copy_partition(session, copy_ref, new_ref, 1, virtual_size)
+        _copy_partition(session, copy_ref, new_ref, 1, vdi_size)
 
         return new_ref, new_uuid
     finally:
