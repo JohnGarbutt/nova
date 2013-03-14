@@ -1494,10 +1494,42 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
         xenapi_fake.create_vm(instance['name'], 'Running')
         instance_type = db.instance_type_get_by_name(self.context, 'm1.small')
         conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
-        self.assertRaises(exception.ResizeError,
-                          conn.migrate_disk_and_power_off,
-                          self.context, instance,
-                          '127.0.0.1', instance_type, None)
+        try:
+            conn.migrate_disk_and_power_off(self.context, instance,
+                '127.0.0.1', instance_type, None)
+            self.assertFail()
+        except exception.ResizeError, e:
+            self.assertTrue("auto_disk_config" in str(e))
+
+    def test_migrate_fs_too_big_to_resize_down(self):
+        # Resize down should fail when filesystem min size too big for flavor.
+        instance_values = self.instance_values
+        instance_values['root_gb'] = 40
+        instance_values['auto_disk_config'] = True
+        instance = db.instance_create(self.context, instance_values)
+        xenapi_fake.create_vm(instance['name'], 'Running')
+        instance_type = db.instance_type_get_by_name(self.context, 'm1.small')
+        conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
+
+        small_disk_bytes = 40 * (1024 ** 3)
+        min_size_bytes = small_disk_bytes + 1
+        self._called_fake_get_min_fs_size_bytes = False
+
+        def _fake_get_min_fs_size_bytes(*args, **kwargs):
+            self._called_fake_get_min_fs_size_bytes = True
+            return min_size_bytes
+
+        self.stubs.Set(vm_utils, 'get_min_fs_size_bytes',
+                            _fake_get_min_fs_size_bytes)
+
+        try:
+            conn.migrate_disk_and_power_off(self.context, instance,
+                '127.0.0.1', instance_type, None)
+            self.assertFail()
+        except exception.ResizeError, e:
+            self.assertTrue(str(min_size_bytes) in str(e))
+
+        self.assertTrue(self._called_fake_get_min_fs_size_bytes)
 
 
 class XenAPIImageTypeTestCase(test.TestCase):

@@ -21,6 +21,7 @@ import fixtures
 import mox
 
 from nova import test
+from nova.tests import test_xenapi
 from nova import utils
 from nova.virt.xenapi import vm_utils
 
@@ -115,3 +116,31 @@ class XenAPIGetUUID(test.TestCase):
         self.assertEquals('2f46f0f5-f14c-ef1b-1fac-9eeca0888a3f',
                           vm_utils.get_this_vm_uuid())
         self.mox.VerifyAll()
+
+
+class ResizeHelpersTestCase(test.TestCase):
+    @test_xenapi.stub_vm_utils_with_vdi_attached_here
+    def test_get_min_fs_size_bytes(self):
+        # Ensure get_min_fs_size_bytes works correctly
+
+        class FakeSession():
+            def call_xenapi(*args):
+                pass
+
+        self.mox.StubOutWithMock(vm_utils, 'get_vdi_for_vm_safely')
+        self.mox.StubOutWithMock(vm_utils, '_get_partitions')
+        self.mox.StubOutWithMock(utils, 'execute')
+
+        _session = FakeSession()
+        vm_utils.get_vdi_for_vm_safely(_session,
+            'vm_ref').AndReturn(("vdi_ref", "vdi_rec"))
+        vm_utils._get_partitions("fakedev").AndReturn(["fake"])
+        utils.execute('e2fsck', '-f', '-y', "/dev/fakedev1",
+            run_as_root=True, check_exit_code=[0, 1, 2])
+        utils.execute('resize2fs', '-P', "/dev/fakedev1",
+            run_as_root=True).AndReturn(("size is: 42", ""))
+
+        self.mox.ReplayAll()
+
+        result = vm_utils.get_min_fs_size_bytes(_session, 'vm_ref')
+        self.assertEquals(42 * 4096, result)

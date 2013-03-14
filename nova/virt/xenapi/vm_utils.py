@@ -726,6 +726,45 @@ def _find_cached_image(session, image_id, sr_ref):
     return cached_images.get(image_id)
 
 
+def get_min_fs_size_bytes(session, vm_ref, block_size=4096):
+    vdi_ref, _vm_vdi_rec = get_vdi_for_vm_safely(session, vm_ref)
+    snapshot_ref = session.call_xenapi('VDI.snapshot', vdi_ref)
+
+    try:
+        with vdi_attached_here(session, snapshot_ref, read_only=False) as dev:
+            partitions = _get_partitions(dev)
+            if len(partitions) != 1:
+                # Can't resize down if not only one partition
+                return 0
+
+            dev_path = utils.make_dev_path(dev)
+            partition_path = utils.make_dev_path(dev, partition=1)
+
+            min_size_blocks = _get_min_size_blocks(partition_path)
+            min_size_bytes = min_size_blocks * block_size
+            LOG.debug(_("Calculated minimum filesystem size (bytes): %d")
+                % min_size_bytes)
+            return min_size_bytes
+    finally:
+        destroy_vdi(session, snapshot_ref)
+
+
+def _get_min_size_blocks(partition_path):
+    # Need to repair filesystem to get accurate results from resize2fs
+    _repair_filesystem(partition_path)
+    stdout, _err = utils.execute('resize2fs', '-P', partition_path,
+        run_as_root=True)
+    LOG.debug(_("Calling resize2fs returned: %s") % stdout)
+    return long(re.sub('[^0-9]', '', stdout))
+
+
+def _repair_filesystem(partition_path):
+    # Exit Code 1 = File system errors corrected
+    #           2 = File system errors corrected, system needs a reboot
+    utils.execute('e2fsck', '-f', '-y', partition_path, run_as_root=True,
+        check_exit_code=[0, 1, 2])
+
+
 def resize_disk(session, instance, vdi_ref, instance_type):
     # Copy VDI over to something we can resize
     # NOTE(jerdfelt): Would be nice to just set vdi_ref to read/write
@@ -2050,10 +2089,7 @@ def _resize_part_and_fs(dev, start, old_sectors, new_sectors):
     partition_path = utils.make_dev_path(dev, partition=1)
 
     # Replay journal if FS wasn't cleanly unmounted
-    # Exit Code 1 = File system errors corrected
-    #           2 = File system errors corrected, system needs a reboot
-    utils.execute('e2fsck', '-f', '-y', partition_path, run_as_root=True,
-                  check_exit_code=[0, 1, 2])
+    _repair_filesystem(partition_path)
 
     # Remove ext3 journal (making it ext2)
     utils.execute('tune2fs', '-O ^has_journal', partition_path,
