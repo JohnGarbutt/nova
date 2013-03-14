@@ -880,16 +880,20 @@ class VMOps(object):
         :param instance_type: instance_type to resize to
         """
         vm_ref = self._get_vm_opaque_ref(instance)
-        sr_path = vm_utils.get_sr_path(self._session)
-        resize_down = instance['root_gb'] > instance_type['root_gb']
-        if resize_down and not instance['auto_disk_config']:
-            reason = _('Resize down not allowed without auto_disk_config')
-            raise exception.ResizeError(reason=reason)
 
         # 0. Zero out the progress to begin
         self._update_instance_progress(context, instance,
                                        step=0,
                                        total_steps=RESIZE_TOTAL_STEPS)
+
+        old_gb = instance['root_gb']
+        new_gb = instance_type['root_gb']
+        resize_down = old_gb > new_gb
+
+        # Check before we modify instance, to ensure instance stays alive
+        # TODO(johngarbutt): but ideally not put instance in error state
+        if resize_down:
+            self._check_can_resize_down(instance, vm_ref, new_gb)
 
         # NOTE(sirp): in case we're resizing to the same host (for dev
         # purposes), apply a suffix to name-label so the two VM records
@@ -897,6 +901,7 @@ class VMOps(object):
         name_label = self._get_orig_vm_name_label(instance)
         vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
 
+        sr_path = vm_utils.get_sr_path(self._session)
         if resize_down:
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
@@ -909,6 +914,20 @@ class VMOps(object):
         # VHDs to figure out how to reconstruct the VDI chain after syncing
         disk_info = {}
         return disk_info
+
+    def _check_can_resize_down(self, instance, vm_ref, new_gb):
+        if not instance['auto_disk_config']:
+            reason = _('Resize down not allowed without auto_disk_config')
+            raise exception.ResizeError(reason=reason)
+
+        min_size_bytes = vm_utils.get_min_fs_size_bytes(
+            self._session, vm_ref)
+        new_bytes = new_gb * (1024 * 1024 * 1024)
+        if min_size_bytes > new_bytes:
+            reason = _('Resize down not allowed because minimum '
+                       'filesystem size %(min_size_bytes)d is too big '
+                       'for target size %(new_bytes)d')
+            raise exception.ResizeError(reason=(reason % locals()))
 
     def _resize_instance(self, instance, root_vdi):
         """Resize an instances root disk."""

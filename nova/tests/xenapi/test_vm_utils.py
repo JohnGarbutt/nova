@@ -3,7 +3,9 @@ from nova import context
 from nova import db
 from nova import exception
 from nova import test
+from nova.tests import test_xenapi
 from nova.tests.xenapi import stubs
+from nova import utils
 from nova.virt.xenapi import driver as xenapi_conn
 from nova.virt.xenapi import fake
 from nova.virt.xenapi import vm_utils
@@ -204,3 +206,31 @@ class BittorrentTestCase(stubs.XenAPITestBase):
 
     def test_create_image_uncached(self):
         self._test_create_image('none')
+
+
+class ResizeHelpersTestCase(stubs.XenAPITestBase):
+    @test_xenapi.stub_vm_utils_with_vdi_attached_here
+    def test_get_min_fs_size_bytes(self):
+        # Ensure get_min_fs_size_bytes works correctly
+
+        class FakeSession():
+            def call_xenapi(*args):
+                pass
+
+        self.mox.StubOutWithMock(vm_utils, 'get_vdi_for_vm_safely')
+        self.mox.StubOutWithMock(vm_utils, '_get_partitions')
+        self.mox.StubOutWithMock(utils, 'execute')
+
+        _session = FakeSession()
+        vm_utils.get_vdi_for_vm_safely(_session,
+            'vm_ref').AndReturn(("vdi_ref", "vdi_rec"))
+        vm_utils._get_partitions("fakedev").AndReturn(["fake"])
+        utils.execute('e2fsck', '-f', '-y', "/dev/fakedev1",
+            run_as_root=True, check_exit_code=[0, 1, 2])
+        utils.execute('resize2fs', '-P', "/dev/fakedev1",
+            run_as_root=True).AndReturn(("size is: 42", ""))
+
+        self.mox.ReplayAll()
+
+        result = vm_utils.get_min_fs_size_bytes(_session, 'vm_ref')
+        self.assertEquals(42 * 4096, result)
