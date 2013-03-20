@@ -79,10 +79,11 @@ RESIZE_TOTAL_STEPS = 5
 
 DEVICE_ROOT = '0'
 DEVICE_RESCUE = '1'
-DEVICE_SWAP = '2'
-DEVICE_EPHEMERAL = '3'
-DEVICE_CD = '4'
-DEVICE_CONFIGDRIVE = '5'
+DEVICE_CD = '2'
+DEVICE_CONFIGDRIVE = '3'
+# Note(johngarbutt) HVM guests only support four devices
+DEVICE_SWAP = '4'
+DEVICE_EPHEMERAL = '5'
 
 
 def cmp_version(a, b):
@@ -534,9 +535,13 @@ class VMOps(object):
         elif mode == vm_mode.HVM:
             use_pv_kernel = False
         else:
-            use_pv_kernel = vm_utils.determine_is_pv(self._session,
-                    vdis['root']['ref'], disk_image_type, instance['os_type'])
-            mode = use_pv_kernel and vm_mode.XEN or vm_mode.HVM
+            mode = vm_mode.HVM
+            use_pv_kernel = False
+            if ('root' in vdis) and vm_utils.determine_is_pv(self._session,
+                        vdis['root']['ref'], disk_image_type,
+                        instance['os_type']):
+                    mode = vm_mode.XEN
+                    use_pv_kernel = True
 
         if instance['vm_mode'] != mode:
             # Update database with normalized (or determined) value
@@ -555,19 +560,14 @@ class VMOps(object):
         # Attach (required) root disk
         if disk_image_type == vm_utils.ImageType.DISK_ISO:
             # DISK_ISO needs two VBDs: the ISO disk and a blank RW disk
-            LOG.debug(_("Detected ISO image type, creating blank VM "
-                        "for install"), instance=instance)
+            root_disk_size = instance_type['root_gb']
+            if root_disk_size > 0:
+                vm_utils.generate_iso_blank_root_disk(self._session, instance,
+                    vm_ref, DEVICE_ROOT, name_label, root_disk_size)
 
-            cd_vdi = vdis.pop('root')
-            root_vdi = vm_utils.fetch_blank_disk(self._session,
-                                                 instance_type['id'])
-            vdis['root'] = root_vdi
-
-            vm_utils.create_vbd(self._session, vm_ref, root_vdi['ref'],
-                                DEVICE_ROOT, bootable=False)
-
-            vm_utils.create_vbd(self._session, vm_ref, cd_vdi['ref'],
-                                DEVICE_CD, vbd_type='CD', bootable=True)
+            cd_vdi = vdis.pop('iso')
+            vm_utils.attach_cd(self._session, vm_ref, cd_vdi['ref'],
+                               DEVICE_CD)
         else:
             root_vdi = vdis['root']
 
