@@ -804,7 +804,7 @@ class VMOps(object):
         if not vm_utils.clean_shutdown_vm(self._session, instance, vm_ref):
             LOG.debug(_("Clean shutdown did not complete successfully, "
                         "trying hard shutdown."), instance=instance)
-            if not vm_utils.hard_shutdown_vm(self._session, instance, vm_ref)
+            if not vm_utils.hard_shutdown_vm(self._session, instance, vm_ref):
                 raise exception.ResizeError(
                         reason=_("Unable to terminate instance."))
 
@@ -824,7 +824,7 @@ class VMOps(object):
 
         @step
         def rename_and_power_off_vm(undo_mgr):
-            self._resize_ensure_vm_is_shutdown(self._session, instance, vm_ref)
+            self._resize_ensure_vm_is_shutdown(instance, vm_ref)
             self._apply_orig_vm_name_label(instance, vm_ref)
 
             def restore_orig_vm():
@@ -834,10 +834,8 @@ class VMOps(object):
 
         @step
         def create_copy_vdi_and_resize(undo_mgr, old_vdi_ref):
-            new_vdi_ref, _ = vm_utils.resize_disk(self._session,
-                                                 instance,
-                                                 old_vdi_ref,
-                                                 instance_type)
+            new_vdi_ref, _ignore = vm_utils.resize_disk(self._session,
+                instance, old_vdi_ref, instance_type)
 
             def cleanup_vdi_copy():
                 vm_utils.destroy_vdi(self._session, new_ref)
@@ -856,8 +854,8 @@ class VMOps(object):
         try:
             fake_step_to_match_resizing_up()
             rename_and_power_off_vm(undo_mgr)
-            old_vdi_ref, _ = vm_utils.get_vdi_for_vm_safely(self._session,
-                                                            vm_ref)
+            old_vdi_ref, _ignore = vm_utils.get_vdi_for_vm_safely(
+                self._session, vm_ref)
             new_vdi_ref = create_copy_vdi_and_resize(undo_mgr, old_vdi_ref)
             transfer_vhd_to_dest(new_vdi_ref)
         except Exception:
@@ -891,7 +889,7 @@ class VMOps(object):
                                                total_steps=RESIZE_TOTAL_STEPS)
 
         # 3. Now power down the instance
-        self._resize_ensure_vm_is_shutdown(self._session, instance, vm_ref)
+        self._resize_ensure_vm_is_shutdown(instance, vm_ref)
         self._update_instance_progress(context, instance,
                                        step=3,
                                        total_steps=RESIZE_TOTAL_STEPS)
