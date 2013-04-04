@@ -209,6 +209,9 @@ class VMOps(object):
         return nova_uuids
 
     def confirm_migration(self, migration, instance, network_info):
+        self._destroy_orig_vm(instance, network_info)
+
+    def _destroy_orig_vm(self, instance, network_info):
         name_label = self._get_orig_vm_name_label(instance)
         vm_ref = vm_utils.lookup(self._session, name_label)
         return self._destroy(instance, vm_ref, network_info=network_info)
@@ -227,6 +230,9 @@ class VMOps(object):
                                           hotplug=False)
 
     def finish_revert_migration(self, instance, block_device_info=None):
+        self._restore_orig_vm_and_cleanup_orphan(instance)
+
+    def _restore_orig_vm_and_cleanup_orphan(self, instance):
         # NOTE(sirp): the original vm was suffixed with '-orig'; find it using
         # the old suffix, remove the suffix, then power it back on.
         name_label = self._get_orig_vm_name_label(instance)
@@ -794,53 +800,76 @@ class VMOps(object):
         self._virtapi.instance_update(context, instance['uuid'],
                                       {'progress': progress})
 
-    def _migrate_disk_resizing_down(self, context, instance, dest,
-                                    instance_type, vm_ref, sr_path):
-        # 1. NOOP since we're not transmitting the base-copy separately
-        self._update_instance_progress(context, instance,
-                                       step=1,
-                                       total_steps=RESIZE_TOTAL_STEPS)
-
-        vdi_ref, vm_vdi_rec = vm_utils.get_vdi_for_vm_safely(
-                self._session, vm_ref)
-        vdi_uuid = vm_vdi_rec['uuid']
-
-        old_gb = instance['root_gb']
-        new_gb = instance_type['root_gb']
-        LOG.debug(_("Resizing down VDI %(vdi_uuid)s from "
-                    "%(old_gb)dGB to %(new_gb)dGB"), locals(),
-                  instance=instance)
-
-        # 2. Power down the instance before resizing
+    def _resize_ensure_vm_is_shutdown(self, instance, vm_ref):
         if not vm_utils.clean_shutdown_vm(self._session, instance, vm_ref):
             LOG.debug(_("Clean shutdown did not complete successfully, "
                         "trying hard shutdown."), instance=instance)
-            vm_utils.hard_shutdown_vm(self._session, instance, vm_ref)
-        self._update_instance_progress(context, instance,
-                                       step=2,
-                                       total_steps=RESIZE_TOTAL_STEPS)
+            if not vm_utils.hard_shutdown_vm(self._session, instance, vm_ref)
+                raise exception.ResizeError(
+                        reason=_("Unable to terminate instance."))
 
-        # 3. Copy VDI, resize partition and filesystem, forget VDI,
-        # truncate VHD
-        new_ref, new_uuid = vm_utils.resize_disk(self._session,
+    def _migrate_disk_resizing_down(self, context, instance, dest,
+                                    instance_type, vm_ref, sr_path):
+ 
+        if not instance['auto_disk_config']:
+            reason = _('Resize down not allowed without auto_disk_config')
+            raise exception.ResizeError(reason=reason)
+
+        step = make_step_decorator(context, instance,
+                                   self._virtapi.instance_update)
+
+        @step
+        def fake_step_to_match_resizing_up():
+            pass
+
+        @step
+        def rename_and_power_off_vm(undo_mgr):
+            self._resize_ensure_vm_is_shutdown(self._session, instance, vm_ref)
+            self._apply_orig_vm_name_label(instance, vm_ref)
+
+            def restore_orig_vm():
+                self._restore_orig_vm_and_cleanup_orphan(instance)
+ 
+            undo_mgr.undo_with(restore_orig_vm)
+
+        @step
+        def create_copy_vdi_and_resize(undo_mgr, old_vdi_ref):
+            new_vdi_ref, _ = vm_utils.resize_disk(self._session,
                                                  instance,
-                                                 vdi_ref,
+                                                 old_vdi_ref,
                                                  instance_type)
-        self._update_instance_progress(context, instance,
-                                       step=3,
-                                       total_steps=RESIZE_TOTAL_STEPS)
 
-        # 4. Transfer the new VHD
-        self._migrate_vhd(instance, new_uuid, dest, sr_path, 0)
-        self._update_instance_progress(context, instance,
-                                       step=4,
-                                       total_steps=RESIZE_TOTAL_STEPS)
+            def cleanup_vdi_copy():
+                vm_utils.destroy_vdi(self._session, new_ref)
 
-        # Clean up VDI now that it's been copied
-        vm_utils.destroy_vdi(self._session, new_ref)
+            undo_mgr.undo_with(cleanup_vdi_copy)
+ 
+            return new_vdi_ref
+
+        @step
+        def transfer_vhd_to_dest(new_vdi_ref):
+            self._migrate_vhd(instance, new_uuid, dest, sr_path, 0)
+            # Clean up VDI now that it's been copied
+            vm_utils.destroy_vdi(self._session, new_vdi_ref)
+
+        undo_mgr = utils.UndoManager()
+        try:
+            fake_step_to_match_resizing_up()
+            rename_and_power_off_vm(undo_mgr)
+            old_vdi_ref, _ = vm_utils.get_vdi_for_vm_safely(self._session,
+                                                            vm_ref)
+            new_vdi_ref = create_copy_vdi_and_resize(undo_mgr, old_vdi_ref)
+            transfer_vhd_to_dest(new_vdi_ref)
+        except Exception:
+            msg = _("Failed to migrate disk, rolling back")
+            LOG.exception(msg, instance=instance)
+            undo_mgr._rollback()
+            raise exception.ResizeError(reason=msg)
 
     def _migrate_disk_resizing_up(self, context, instance, dest, vm_ref,
                                   sr_path):
+        self._apply_orig_vm_name_label(instance, vm_ref)
+
         # 1. Create Snapshot
         label = "%s-snapshot" % instance['name']
         with vm_utils.snapshot_attached_here(
@@ -862,10 +891,7 @@ class VMOps(object):
                                                total_steps=RESIZE_TOTAL_STEPS)
 
         # 3. Now power down the instance
-        if not vm_utils.clean_shutdown_vm(self._session, instance, vm_ref):
-            LOG.debug(_("Clean shutdown did not complete successfully, "
-                        "trying hard shutdown."), instance=instance)
-            vm_utils.hard_shutdown_vm(self._session, instance, vm_ref)
+        self._resize_ensure_vm_is_shutdown(self._session, instance, vm_ref)
         self._update_instance_progress(context, instance,
                                        step=3,
                                        total_steps=RESIZE_TOTAL_STEPS)
@@ -879,6 +905,13 @@ class VMOps(object):
                                        step=4,
                                        total_steps=RESIZE_TOTAL_STEPS)
 
+    def _apply_orig_vm_name_label(self, instance, vm_ref):
+        # NOTE(sirp): in case we're resizing to the same host (for dev
+        # purposes), apply a suffix to name-label so the two VM records
+        # extant until a confirm_resize don't collide.
+        name_label = self._get_orig_vm_name_label(instance)
+        vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
+
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    instance_type):
         """Copies a VHD from one host machine to another, possibly
@@ -888,29 +921,18 @@ class VMOps(object):
         :param dest: the destination host machine.
         :param instance_type: instance_type to resize to
         """
-        vm_ref = self._get_vm_opaque_ref(instance)
-
         # 0. Zero out the progress to begin
         self._update_instance_progress(context, instance,
                                        step=0,
                                        total_steps=RESIZE_TOTAL_STEPS)
 
+        vm_ref = self._get_vm_opaque_ref(instance)
+        sr_path = vm_utils.get_sr_path(self._session)
+
         old_gb = instance['root_gb']
         new_gb = instance_type['root_gb']
         resize_down = old_gb > new_gb
 
-        # Check before we modify instance, to ensure instance stays alive
-        # TODO(johngarbutt): but ideally not put instance in error state
-        if resize_down:
-            self._check_can_resize_down(instance, vm_ref, new_gb)
-
-        # NOTE(sirp): in case we're resizing to the same host (for dev
-        # purposes), apply a suffix to name-label so the two VM records
-        # extant until a confirm_resize don't collide.
-        name_label = self._get_orig_vm_name_label(instance)
-        vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
-
-        sr_path = vm_utils.get_sr_path(self._session)
         if resize_down:
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
@@ -923,20 +945,6 @@ class VMOps(object):
         # VHDs to figure out how to reconstruct the VDI chain after syncing
         disk_info = {}
         return disk_info
-
-    def _check_can_resize_down(self, instance, vm_ref, new_gb):
-        if not instance['auto_disk_config']:
-            reason = _('Resize down not allowed without auto_disk_config')
-            raise exception.ResizeError(reason=reason)
-
-        min_size_bytes = vm_utils.get_min_fs_size_bytes(
-            self._session, vm_ref)
-        new_bytes = new_gb * (1024 * 1024 * 1024)
-        if min_size_bytes > new_bytes:
-            reason = _('Resize down not allowed because minimum '
-                       'filesystem size %(min_size_bytes)d is too big '
-                       'for target size %(new_bytes)d')
-            raise exception.ResizeError(reason=(reason % locals()))
 
     def _resize_instance(self, instance, root_vdi):
         """Resize an instances root disk."""
@@ -1188,6 +1196,10 @@ class VMOps(object):
                                         "%s-rescue" % instance['name'])
         if rescue_vm_ref:
             self._destroy_rescue_instance(rescue_vm_ref, vm_ref)
+        
+        # There may have been a failed resize, try to remove orig VM
+        # TODO - what about if its actually on another host?
+        self._destroy_orig_vm(instance, network_info)
 
         # NOTE(sirp): `block_device_info` is not used, information about which
         # volumes should be detached is determined by the
