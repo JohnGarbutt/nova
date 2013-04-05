@@ -834,7 +834,7 @@ class VMOps(object):
 
         @step
         def create_copy_vdi_and_resize(undo_mgr, old_vdi_ref):
-            new_vdi_ref, _ignore = vm_utils.resize_disk(self._session,
+            new_vdi_ref, new_vdi_uuid = vm_utils.resize_disk(self._session,
                 instance, old_vdi_ref, instance_type)
 
             def cleanup_vdi_copy():
@@ -842,11 +842,11 @@ class VMOps(object):
 
             undo_mgr.undo_with(cleanup_vdi_copy)
  
-            return new_vdi_ref
+            return new_vdi_ref, new_vdi_uuid
 
         @step
-        def transfer_vhd_to_dest(new_vdi_ref):
-            self._migrate_vhd(instance, new_uuid, dest, sr_path, 0)
+        def transfer_vhd_to_dest(new_vdi_ref, new_vdi_uuid):
+            self._migrate_vhd(instance, new_vdi_uuid, dest, sr_path, 0)
             # Clean up VDI now that it's been copied
             vm_utils.destroy_vdi(self._session, new_vdi_ref)
 
@@ -856,8 +856,9 @@ class VMOps(object):
             rename_and_power_off_vm(undo_mgr)
             old_vdi_ref, _ignore = vm_utils.get_vdi_for_vm_safely(
                 self._session, vm_ref)
-            new_vdi_ref = create_copy_vdi_and_resize(undo_mgr, old_vdi_ref)
-            transfer_vhd_to_dest(new_vdi_ref)
+            new_vdi_ref, new_vdi_uuid = create_copy_vdi_and_resize(
+                undo_mgr, old_vdi_ref)
+            transfer_vhd_to_dest(new_vdi_ref, new_vdi_uuid)
         except Exception:
             msg = _("Failed to migrate disk, rolling back")
             LOG.exception(msg, instance=instance)
