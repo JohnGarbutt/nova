@@ -1213,6 +1213,6 @@ class Base64Exception(NovaException):
 
 class InstanceFaultRollback(NovaException):
     def __init__(self, inner_exception):
-        message = _("Instance rollback performed due to: %(inner_exception)s")
+        message = _("Instance rollback performed due to: %s")
         self.inner_exception = inner_exception
         super(InstanceFaultRollback, self).__init__(message % inner_exception)
