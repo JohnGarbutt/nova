@@ -230,9 +230,10 @@ class VMOps(object):
                                           hotplug=False)
 
     def finish_revert_migration(self, instance, block_device_info=None):
-        self._restore_orig_vm_and_cleanup_orphan(instance)
+        self._restore_orig_vm_and_cleanup_orphan(instance, block_device_info)
 
-    def _restore_orig_vm_and_cleanup_orphan(self, instance):
+    def _restore_orig_vm_and_cleanup_orphan(self, instance,
+                                            block_device_info):
         # NOTE(sirp): the original vm was suffixed with '-orig'; find it using
         # the old suffix, remove the suffix, then power it back on.
         name_label = self._get_orig_vm_name_label(instance)
@@ -828,7 +829,8 @@ class VMOps(object):
             self._apply_orig_vm_name_label(instance, vm_ref)
 
             def restore_orig_vm():
-                self._restore_orig_vm_and_cleanup_orphan(instance)
+                # Do not need to restore block devices, not yet been removed
+                self._restore_orig_vm_and_cleanup_orphan(instance, None)
  
             undo_mgr.undo_with(restore_orig_vm)
 
@@ -850,6 +852,10 @@ class VMOps(object):
             # Clean up VDI now that it's been copied
             vm_utils.destroy_vdi(self._session, new_vdi_ref)
 
+        @step
+        def fake_step_to_be_executed_by_finish_migration():
+            pass
+
         undo_mgr = utils.UndoManager()
         try:
             fake_step_to_match_resizing_up()
@@ -860,9 +866,10 @@ class VMOps(object):
                 undo_mgr, old_vdi_ref)
             transfer_vhd_to_dest(new_vdi_ref, new_vdi_uuid)
         except Exception:
-            msg = _("Failed to migrate disk, rolling back")
+            msg = _("_migrate_disk_resizing_down failed, restoring orig vm.")
             LOG.exception(msg, instance=instance)
             undo_mgr._rollback()
+            # TODO - raise exception that rolls back instance state
             raise exception.ResizeError(reason=msg)
 
     def _migrate_disk_resizing_up(self, context, instance, dest, vm_ref,
