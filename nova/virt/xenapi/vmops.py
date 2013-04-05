@@ -232,8 +232,7 @@ class VMOps(object):
     def finish_revert_migration(self, instance, block_device_info=None):
         self._restore_orig_vm_and_cleanup_orphan(instance, block_device_info)
 
-    def _restore_orig_vm_and_cleanup_orphan(self, instance,
-                                            block_device_info):
+    def _restore_orig_vm_and_cleanup_orphan(self, instance, block_device_info):
         # NOTE(sirp): the original vm was suffixed with '-orig'; find it using
         # the old suffix, remove the suffix, then power it back on.
         name_label = self._get_orig_vm_name_label(instance)
@@ -811,7 +810,7 @@ class VMOps(object):
 
     def _migrate_disk_resizing_down(self, context, instance, dest,
                                     instance_type, vm_ref, sr_path):
- 
+
         if not instance['auto_disk_config']:
             reason = _('Resize down not allowed without auto_disk_config')
             raise exception.ResizeError(reason=reason)
@@ -831,7 +830,7 @@ class VMOps(object):
             def restore_orig_vm():
                 # Do not need to restore block devices, not yet been removed
                 self._restore_orig_vm_and_cleanup_orphan(instance, None)
- 
+
             undo_mgr.undo_with(restore_orig_vm)
 
         @step
@@ -843,7 +842,7 @@ class VMOps(object):
                 vm_utils.destroy_vdi(self._session, new_ref)
 
             undo_mgr.undo_with(cleanup_vdi_copy)
- 
+
             return new_vdi_ref, new_vdi_uuid
 
         @step
@@ -865,12 +864,12 @@ class VMOps(object):
             new_vdi_ref, new_vdi_uuid = create_copy_vdi_and_resize(
                 undo_mgr, old_vdi_ref)
             transfer_vhd_to_dest(new_vdi_ref, new_vdi_uuid)
-        except Exception:
-            msg = _("_migrate_disk_resizing_down failed, restoring orig vm.")
+        except Exception, error:
+            msg = _("_migrate_disk_resizing_down failed. "
+                    "Restoring orig vm due_to: %{exception}.")
             LOG.exception(msg, instance=instance)
             undo_mgr._rollback()
-            # TODO - raise exception that rolls back instance state
-            raise exception.ResizeError(reason=msg)
+            raise exception.InstanceFaultRollback(error)
 
     def _migrate_disk_resizing_up(self, context, instance, dest, vm_ref,
                                   sr_path):
@@ -919,7 +918,7 @@ class VMOps(object):
         vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
 
     def migrate_disk_and_power_off(self, context, instance, dest,
-                                   instance_type):
+                                   instance_type, block_device_info):
         """Copies a VHD from one host machine to another, possibly
         resizing filesystem before hand.
 
@@ -945,12 +944,24 @@ class VMOps(object):
         else:
             self._migrate_disk_resizing_up(
                     context, instance, dest, vm_ref, sr_path)
+        
+        self._detach_block_devices_from_orig_vm(instance, block_device_info)
 
         # NOTE(sirp): disk_info isn't used by the xenapi driver, instead it
         # uses a staging-area (/images/instance<uuid>) and sequence-numbered
         # VHDs to figure out how to reconstruct the VDI chain after syncing
         disk_info = {}
         return disk_info
+
+    def _detach_block_devices_from_orig_vm(self, instance, block_device_info):
+        block_device_mapping = virt_driver.block_device_info_get_mapping(
+                block_device_info)
+        name_label = self._get_orig_vm_name_label(instance)
+        for vol in block_device_mapping:
+            connection_info = vol['connection_info']
+            mount_device = vol['mount_device'].rpartition("/")[2]
+            self._volumeops.detach_volume(connection_info, name_label,
+                                          mount_device)
 
     def _resize_instance(self, instance, root_vdi):
         """Resize an instances root disk."""
@@ -1202,10 +1213,6 @@ class VMOps(object):
                                         "%s-rescue" % instance['name'])
         if rescue_vm_ref:
             self._destroy_rescue_instance(rescue_vm_ref, vm_ref)
-        
-        # There may have been a failed resize, try to remove orig VM
-        # TODO - what about if its actually on another host?
-        self._destroy_orig_vm(instance, network_info)
 
         # NOTE(sirp): `block_device_info` is not used, information about which
         # volumes should be detached is determined by the

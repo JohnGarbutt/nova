@@ -3944,6 +3944,13 @@ class ComputeManager(manager.SchedulerDependentManager):
                                         reservations=None):
         try:
             yield
+        except exception.InstanceFaultRollback, error:
+            self._quota_rollback(context, reservations)
+            msg = _("Setting instance back to ACTIVE after: %s")
+            LOG.info(msg % error, instance_uuid=instance_uuid)
+            self._instance_update(context, instance_uuid,
+                                  vm_state=vm_states.ACTIVE)
+            raise error.inner_exception
         except Exception, error:
             self._quota_rollback(context, reservations)
             with excutils.save_and_reraise_exception():

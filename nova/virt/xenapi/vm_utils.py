@@ -2075,7 +2075,6 @@ def _resize_part_and_fs(dev, start, old_sectors, new_sectors):
         # Resizing down, resize filesystem before partition resize
         min_sectors = _get_min_sectors(partition_path)
         if min_sectors > new_sectors:
-            # TODO - can we just check return value of below?
             reason = _('Resize down not allowed because minimum '
                        'filesystem sectors %(min_sectors)d is too big '
                        'for target sectors %(new_sectors)d')
