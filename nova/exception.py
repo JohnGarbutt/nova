@@ -1211,7 +1211,7 @@ class Base64Exception(NovaException):
     message = _("Invalid Base 64 data for file %(path)s")
 
 
-class InstanceFaultRollback(NovaExcpetion):
+class InstanceFaultRollback(NovaException):
     def __init__(self, inner_exception):
         message = _("Instance rollback performed due to: %(inner_exception)s")
         self.inner_exception = inner_exception
