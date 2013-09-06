@@ -276,7 +276,7 @@ class MetadataTestCase(test.TestCase):
         self.assertTrue(md._check_version('2009-04-04', '2009-04-04'))
 
     def test_InstanceMetadata_uses_passed_network_info(self):
-        network_info = {"a": "b"}
+        network_info = []
 
         self.mox.StubOutWithMock(netutils, "get_injected_network_template")
         netutils.get_injected_network_template(network_info).AndReturn(False)
@@ -291,7 +291,7 @@ class MetadataTestCase(test.TestCase):
             self.assertIsNotNone(path)
 
     def test_InstanceMetadata_queries_network_API_when_needed(self):
-        network_info_from_api = {"c": "d"}
+        network_info_from_api = []
 
         self.mox.StubOutWithMock(network_api.API, "get_instance_nw_info")
 

@@ -431,7 +431,7 @@ class VMOps(object):
                                 instance=instance)
 
             self._attach_disks(instance, vm_ref, name_label, vdis,
-                               disk_image_type, admin_password,
+                               disk_image_type, network_info, admin_password,
                                injected_files)
 
         if rescue:
@@ -523,7 +523,7 @@ class VMOps(object):
         vm_ref = self._create_vm_record(context, instance, name_label,
                 vdis, disk_image_type, kernel_file, ramdisk_file)
         self._attach_disks(instance, vm_ref, name_label, vdis,
-                disk_image_type)
+                disk_image_type, network_info)
         self._setup_vm_networking(instance, vm_ref, vdis, network_info,
                 rescue)
         self.inject_instance_metadata(instance, vm_ref)
@@ -589,7 +589,8 @@ class VMOps(object):
             return vm_mode.HVM
 
     def _attach_disks(self, instance, vm_ref, name_label, vdis,
-                      disk_image_type, admin_password=None, files=None):
+                      disk_image_type, network_info,
+                      admin_password=None, files=None):
         ctx = nova_context.get_admin_context()
         instance_type = flavors.extract_flavor(instance)
 
@@ -648,6 +649,7 @@ class VMOps(object):
         if configdrive.required_by(instance):
             vm_utils.generate_configdrive(self._session, instance, vm_ref,
                                           DEVICE_CONFIGDRIVE,
+                                          network_info,
                                           admin_password=admin_password,
                                           files=files)
 
