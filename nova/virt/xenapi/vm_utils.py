@@ -772,7 +772,7 @@ def _find_cached_image(session, image_id, sr_ref):
     name_description = 'root'
     recs = session.call_xenapi("VDI.get_all_records_where",
                                'field "name__label"="%(label)s" and '
-                               'field "name_description"="%(description)s"'
+                               'field "name__description"="%(description)s"'
                                % dict(label=name_label,
                                       description=name_description))
     if len(recs) == 1:
