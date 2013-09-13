@@ -768,8 +768,15 @@ def _find_cached_images(session, sr_ref):
 
 def _find_cached_image(session, image_id, sr_ref):
     """Returns the vdi-ref of the cached image."""
-    cached_images = _find_cached_images(session, sr_ref)
-    return cached_images.get(image_id)
+    name_label = 'Glance Image %s' % image_id
+    name_description = 'root'
+    recs = session.call_xenapi("VDI.get_all_records_where",
+                               'field "name_label"="%(label)s" and '
+                               'field "name_description"="%(description)s"'
+                               % dict(label=name_label,
+                                      description=name_description))
+    if len(recs) == 1:
+        return recs.keys()[0]
 
 
 def resize_disk(session, instance, vdi_ref, instance_type):
@@ -1720,7 +1727,10 @@ def _get_all_vdis_in_sr(session, sr_ref):
     for vdi_ref in session.call_xenapi('SR.get_VDIs', sr_ref):
         try:
             vdi_rec = session.call_xenapi('VDI.get_record', vdi_ref)
-            yield vdi_ref, vdi_rec
+            # Check to make sure the record still exists. It may have
+            # been deleted between the get_all call and get_record call
+            if vdi_rec:
+                yield vdi_ref, vdi_rec
         except session.XenAPI.Failure:
             continue
 
