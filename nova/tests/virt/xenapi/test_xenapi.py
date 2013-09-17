@@ -1534,7 +1534,8 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                   'image_ref': 1,
                   'kernel_id': None,
                   'ramdisk_id': None,
-                  'root_gb': 5,
+                  'root_gb': 80,
+                  'ephemeral_gb': 80,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}

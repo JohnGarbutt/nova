@@ -15,6 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import mock
 
 from nova.compute import task_states
 from nova.compute import vm_mode
@@ -273,3 +274,37 @@ class RemoveHostnameTestCase(VMOpsTestBase):
         self.mox.ReplayAll()
         self.vmops.remove_hostname(instance, vm_ref)
         self.mox.VerifyAll()
+
+
+@mock.patch.object(vmops.VMOps, '_update_instance_progress')
+@mock.patch.object(vmops.VMOps, '_get_vm_opaque_ref')
+@mock.patch.object(vm_utils, 'get_sr_path')
+@mock.patch.object(vmops.VMOps, '_detach_block_devices_from_orig_vm')
+class MigrateDiskAndPowerOffTestCase(VMOpsTestBase):
+    def test_migrate_disk_and_power_off_raises_ephemeral_down(self, *mocks):
+        instance = {"root_gb": 2, "ephemeral_gb": 1}
+        ins_type = {"root_gb": 1, "ephemeral_gb": 1}
+        self.assertRaises(NotImplementedError,
+                          self.vmops.migrate_disk_and_power_off,
+                          None, instance, None, ins_type, None)
+
+    def test_migrate_disk_and_power_off_raises_ephemeral_up(self, *mocks):
+        instance = {"root_gb": 1, "ephemeral_gb": 1}
+        ins_type = {"root_gb": 1, "ephemeral_gb": 2}
+        self.assertRaises(NotImplementedError,
+                          self.vmops.migrate_disk_and_power_off,
+                          None, instance, None, ins_type, None)
+
+    @mock.patch.object(vmops.VMOps, '_migrate_disk_resizing_down')
+    def test_migrate_disk_and_power_off_works_down(self, *mocks):
+        instance = {"root_gb": 2, "ephemeral_gb": 0}
+        ins_type = {"root_gb": 1, "ephemeral_gb": 0}
+        self.vmops.migrate_disk_and_power_off(None, instance, None,
+                ins_type, None)
+
+    @mock.patch.object(vmops.VMOps, '_migrate_disk_resizing_up')
+    def test_migrate_disk_and_power_off_works_ephemeral_same_up(self, *mocks):
+        instance = {"root_gb": 1, "ephemeral_gb": 1}
+        ins_type = {"root_gb": 2, "ephemeral_gb": 1}
+        self.vmops.migrate_disk_and_power_off(None, instance, None,
+                ins_type, None)

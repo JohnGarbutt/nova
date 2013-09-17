@@ -931,6 +931,11 @@ class VMOps(object):
         name_label = self._get_orig_vm_name_label(instance)
         vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
 
+    def _is_resize_down(self, instance, instance_type, value):
+        old_gb = instance[value]
+        new_gb = instance_type[value]
+        return old_gb > new_gb
+
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    instance_type, block_device_info):
         """Copies a VHD from one host machine to another, possibly
@@ -948,14 +953,19 @@ class VMOps(object):
         vm_ref = self._get_vm_opaque_ref(instance)
         sr_path = vm_utils.get_sr_path(self._session)
 
-        old_gb = instance['root_gb']
-        new_gb = instance_type['root_gb']
-        resize_down = old_gb > new_gb
-
-        if resize_down:
+        resize_down_root = self._is_resize_down(instance, instance_type,
+                                                "root_gb")
+        resize_down_ephemeral = self._is_resize_down(instance, instance_type,
+                                                     "ephemeral_gb")
+        if resize_down_root or resize_down_ephemeral:
+            if instance_type["ephemeral_gb"] > 0:
+                raise NotImplementedError("Unable to resize down if instance "
+                                          "has an ephemeral disk")
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
         else:
+            if instance["ephemeral_gb"] != instance_type["ephemeral_gb"]:
+                raise NotImplementedError("Unable to resize ephemeral disk")
             self._migrate_disk_resizing_up(
                     context, instance, dest, vm_ref, sr_path)
 
