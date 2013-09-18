@@ -648,6 +648,7 @@ def snapshot_attached_here(session, instance, vm_ref, label, *args):
     return _snapshot_attached_here_impl(session, instance, vm_ref, label,
                                         *args)
 
+
 def _snapshot_attached_here_impl(session, instance, vm_ref, label, *args):
     update_task_state = None
     if len(args) == 1:
