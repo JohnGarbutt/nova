@@ -644,6 +644,11 @@ def get_vdi_for_vm_safely(session, vm_ref):
 
 @contextlib.contextmanager
 def snapshot_attached_here(session, instance, vm_ref, label, *args):
+    # impl method allow easier patching for tests
+    return _snapshot_attached_here_impl(session, instance, vm_ref, label,
+                                        *args)
+
+def _snapshot_attached_here_impl(session, instance, vm_ref, label, *args):
     update_task_state = None
     if len(args) == 1:
         update_task_state = args[0]
