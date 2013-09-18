@@ -615,6 +615,13 @@ class MigrateDiskAndPowerOffTestCase(VMOpsTestBase):
 @mock.patch.object(vmops.VMOps, '_update_instance_progress')
 @mock.patch.object(vmops.VMOps, '_apply_orig_vm_name_label')
 class MigrateDiskResizingUpTestCase(VMOpsTestBase):
+    def _fake_snapshot_attached_here(self, _session, _instance, _vm_ref,
+                                     _label):
+        self.assertTrue(isinstance(_instance, dict))
+        self.assertEqual("vm_ref", _vm_ref)
+        self.assertEqual("fake-snapshot", _label)
+        yield ["leaf", "parent", "grandp"]
+
     def test_migrate_disk_resizing_up_works(self,
             mock_apply_orig, mock_update_progress, mock_shutdown,
             mock_migrate_vhd, mock_vdi_for_vm):
@@ -626,14 +633,8 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
 
         mock_vdi_for_vm.return_value = ("ref", {"uuid": "cow"})
 
-        def fake_snapshot_attached_here(_session, _instance, _vm_ref, _label):
-            self.assertEqual(instance, _instance)
-            self.assertEqual(vm_ref, _vm_ref)
-            self.assertEqual("fake-snapshot", _label)
-            yield ["leaf", "parent", "grandp"]
-
         with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
-                               fake_snapshot_attached_here):
+                               self._fake_snapshot_attached_here):
             self.vmops._migrate_disk_resizing_up(context, instance, dest,
                                                  vm_ref, sr_path)
 
@@ -651,3 +652,28 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
                          mock.call(context, instance, 3, 5),
                          mock.call(context, instance, 4, 5)]
         self.assertEqual(prog_expected, mock_update_progress.call_args_list)
+
+    @mock.patch.object(vmops.VMOps, '_restore_orig_vm_and_cleanup_orphan')
+    def test_migrate_disk_resizing_up_rollback(self,
+            mock_restore,
+            mock_apply_orig, mock_update_progress, mock_shutdown,
+            mock_migrate_vhd, mock_vdi_for_vm):
+        context = "ctxt"
+        instance = {"name": "fake", "uuid": "fake"}
+        dest = "dest"
+        vm_ref = "vm_ref"
+        sr_path = "sr_path"
+
+        mock_migrate_vhd.side_effect = test.TestingException
+        mock_restore.side_effect = test.TestingException
+
+        with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
+                               self._fake_snapshot_attached_here):
+            self.assertRaises(exception.InstanceFaultRollback,
+                              self.vmops._migrate_disk_resizing_up,
+                              context, instance, dest, vm_ref, sr_path)
+
+        mock_apply_orig.assert_called_once_with(instance, vm_ref)
+        mock_restore.assert_called_once_with(instance, power_on=False)
+        mock_migrate_vhd.assert_called_once_with(instance, "parent", dest,
+                                                 sr_path, 1)
