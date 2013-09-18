@@ -245,7 +245,8 @@ class VMOps(object):
                                                  power_on)
 
     def _restore_orig_vm_and_cleanup_orphan(self, instance,
-                                            block_device_info, power_on=True):
+                                            block_device_info=None,
+                                            power_on=True):
         # NOTE(sirp): the original vm was suffixed with '-orig'; find it using
         # the old suffix, remove the suffix, then power it back on.
         name_label = self._get_orig_vm_name_label(instance)
@@ -816,7 +817,7 @@ class VMOps(object):
 
             def restore_orig_vm():
                 # Do not need to restore block devices, not yet been removed
-                self._restore_orig_vm_and_cleanup_orphan(instance, None)
+                self._restore_orig_vm_and_cleanup_orphan(instance)
 
             undo_mgr.undo_with(restore_orig_vm)
 
@@ -892,13 +893,27 @@ class VMOps(object):
             pass
 
         self._apply_orig_vm_name_label(instance, vm_ref)
-        label = "%s-snapshot" % instance['name']
-        with vm_utils.snapshot_attached_here(
-                self._session, instance, vm_ref, label) as vdi_uuids:
-            fake_step_to_show_snapshot_complete()
-            transfer_immutable_vhds(vdi_uuids)
-            power_down_instance()
-            transfer_leaf_vhd()
+        power_on_if_error = False
+        try:
+            label = "%s-snapshot" % instance['name']
+            with vm_utils.snapshot_attached_here(
+                    self._session, instance, vm_ref, label) as vdi_uuids:
+                fake_step_to_show_snapshot_complete()
+                transfer_immutable_vhds(vdi_uuids)
+                power_down_instance()
+                power_on_if_error = True
+                transfer_leaf_vhd()
+        except Exception as error:
+            LOG.exception(_("_migrate_disk_resizing_up failed. "
+                            "Restoring orig vm due_to: %s."), error,
+                          instance=instance)
+            try:
+                self._restore_orig_vm_and_cleanup_orphan(
+                        instance, power_on=power_on_if_error)
+            except Exception as rollback_error:
+                LOG.warn(_("Error during _migrate_disk_resizing_up "
+                           "rollback: %s") % rollback_error)
+            raise exception.InstanceFaultRollback(error)
 
     def _apply_orig_vm_name_label(self, instance, vm_ref):
         # NOTE(sirp): in case we're resizing to the same host (for dev
