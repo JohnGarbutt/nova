@@ -1346,3 +1346,57 @@ class ScanSrTestCase(test.NoDBTestCase):
         session.call_xenapi.assert_called_with('SR.scan', "sr_ref")
         self.assertEqual(2, session.call_xenapi.call_count)
         mock_sleep.assert_called_once_with(2)
+
+
+class SnapshotAttachedHereTestCase(test.TestCase):
+    def test_vm_get_vbd_refs(self):
+        session = mock.Mock()
+        vm_utils._vm_get_vbd_refs(session, "vm_ref")
+        session.call_xenapi.assert_called_once_with("VM.get_VBDs", "vm_ref")
+
+    def test_vbd_get_rec(self):
+        session = mock.Mock()
+        vm_utils._vbd_get_rec(session, "vbd_ref")
+        session.call_xenapi.assert_called_once_with("VBD.get_record",
+                                                    "vbd_ref")
+
+    def test_vdi_get_rec(self):
+        session = mock.Mock()
+        vm_utils._vdi_get_rec(session, "vdi_ref")
+        session.call_xenapi.assert_called_once_with("VDI.get_record",
+                                                    "vdi_ref")
+
+    @mock.patch.object(vm_utils, '_vdi_get_rec')
+    @mock.patch.object(vm_utils, '_vbd_get_rec')
+    @mock.patch.object(vm_utils, '_vm_get_vbd_refs')
+    def test_get_vdi_for_vm_safely(self, vm_get_vbd_refs,
+                                           vbd_get_rec, vdi_get_rec):
+        session = "session"
+
+        vm_get_vbd_refs.return_value = ["a", "b"]
+        vbd_get_rec.return_value = {'userdevice': '0', 'VDI': 'vdi_ref'}
+        vdi_get_rec.return_value = {}
+
+        result = vm_utils.get_vdi_for_vm_safely(session, "vm_ref")
+        self.assertEqual(('vdi_ref', {}), result)
+
+        vm_get_vbd_refs.assert_called_once_with(session, "vm_ref")
+        vbd_get_rec.assert_called_once_with(session, "a")
+        vdi_get_rec.assert_called_once_with(session, "vdi_ref")
+
+    @mock.patch.object(vm_utils, '_vdi_get_rec')
+    @mock.patch.object(vm_utils, '_vbd_get_rec')
+    @mock.patch.object(vm_utils, '_vm_get_vbd_refs')
+    def test_get_vdi_for_vm_safely_fails(self, vm_get_vbd_refs,
+                                         vbd_get_rec, vdi_get_rec):
+        session = "session"
+
+        vm_get_vbd_refs.return_value = ["a", "b"]
+        vbd_get_rec.return_value = {'userdevice': '1', 'VDI': 'vdi_ref'}
+
+        self.assertRaises(exception.NovaException,
+                          vm_utils.get_vdi_for_vm_safely,
+                          session, "vm_ref")
+
+        self.assertEqual([], vdi_get_rec.call_args_list)
+        self.assertEqual(2, len(vbd_get_rec.call_args_list))
