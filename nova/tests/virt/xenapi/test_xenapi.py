@@ -211,7 +211,8 @@ class XenAPIVolumeTestCase(stubs.XenAPITestBase):
                   'image_ref': 1,
                   'kernel_id': 2,
                   'ramdisk_id': 3,
-                  'root_gb': 20,
+                  'root_gb': 80,
+                  'ephemeral_gb': 0,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}
@@ -735,6 +736,7 @@ class XenAPIVMTestCase(stubs.XenAPITestBase):
                                'kernel_id': kernel_id,
                                'ramdisk_id': ramdisk_id,
                                'root_gb': 20,
+                               'ephemeral_gb': 0,
                                'instance_type_id': instance_type_id,
                                'os_type': os_type,
                                'hostname': hostname,
@@ -1485,7 +1487,8 @@ class XenAPIVMTestCase(stubs.XenAPITestBase):
             'image_ref': 1,
             'kernel_id': 2,
             'ramdisk_id': 3,
-            'root_gb': 20,
+            'root_gb': 80,
+            'ephemeral_gb': 0,
             'instance_type_id': '3',  # m1.large
             'os_type': 'linux',
             'vm_mode': 'hvm',
@@ -1587,7 +1590,8 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                   'image_ref': 1,
                   'kernel_id': None,
                   'ramdisk_id': None,
-                  'root_gb': 5,
+                  'root_gb': 80,
+                  'ephemeral_gb': 0,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}
@@ -1652,6 +1656,7 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
         self.assertEqual(called['resize'], True)
 
     def test_migrate_disk_and_power_off(self):
+        self.instance_values['ephemeral_gb'] = 80
         instance = db.instance_create(self.context, self.instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
         instance_type = db.flavor_get_by_name(self.context, 'm1.large')
@@ -1660,6 +1665,7 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                                         '127.0.0.1', instance_type, None)
 
     def test_migrate_disk_and_power_off_passes_exceptions(self):
+        self.instance_values['ephemeral_gb'] = 80
         instance = db.instance_create(self.context, self.instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
         instance_type = db.flavor_get_by_name(self.context, 'm1.large')
@@ -1818,7 +1824,6 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
     @stub_vm_utils_with_vdi_attached_here
     def test_migrate_too_many_partitions_no_resize_down(self):
         instance_values = self.instance_values
-        instance_values['root_gb'] = 40
         instance = db.instance_create(self.context, instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
         instance_type = db.flavor_get_by_name(self.context, 'm1.small')
@@ -1837,7 +1842,6 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
     @stub_vm_utils_with_vdi_attached_here
     def test_migrate_bad_fs_type_no_resize_down(self):
         instance_values = self.instance_values
-        instance_values['root_gb'] = 40
         instance = db.instance_create(self.context, instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
         instance_type = db.flavor_get_by_name(self.context, 'm1.small')
@@ -2236,7 +2240,8 @@ class XenAPIAutoDiskConfigTestCase(stubs.XenAPITestBase):
                   'image_ref': 1,
                   'kernel_id': 2,
                   'ramdisk_id': 3,
-                  'root_gb': 20,
+                  'root_gb': 80,
+                  'ephemeral_gb': 0,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}
@@ -2331,7 +2336,8 @@ class XenAPIGenerateLocal(stubs.XenAPITestBase):
                   'image_ref': 1,
                   'kernel_id': 2,
                   'ramdisk_id': 3,
-                  'root_gb': 20,
+                  'root_gb': 80,
+                  'ephemeral_gb': 0,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}

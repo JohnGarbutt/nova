@@ -1068,46 +1068,55 @@ class GenerateEphemeralTestCase(test.NoDBTestCase):
         self.instance = "instance"
         self.vm_ref = "vm_ref"
         self.name_label = "name"
+        self.ephemeral_name_label = "name ephemeral"
         self.userdevice = 4
         self.mox.StubOutWithMock(vm_utils, "_generate_disk")
         self.mox.StubOutWithMock(vm_utils, "safe_destroy_vdis")
 
     def _expect_generate_disk(self, size, device, name_label):
         vm_utils._generate_disk(self.session, self.instance, self.vm_ref,
-            str(device), name_label, 'ephemeral', size * 1024,
-            None).AndReturn(device)
+            str(device), name_label, 'ephemeral',
+            size * 1024, None).AndReturn(device)
 
     def test_generate_ephemeral_adds_one_disk(self):
-        self._expect_generate_disk(20, self.userdevice, self.name_label)
+        self._expect_generate_disk(20, self.userdevice,
+                                   self.ephemeral_name_label)
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 20)
 
     def test_generate_ephemeral_adds_multiple_disks(self):
-        self._expect_generate_disk(2000, self.userdevice, self.name_label)
-        self._expect_generate_disk(2000, self.userdevice + 1, "name (1)")
-        self._expect_generate_disk(30, self.userdevice + 2, "name (2)")
+        self._expect_generate_disk(2000, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(2000, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
+        self._expect_generate_disk(30, self.userdevice + 2,
+                                   self.ephemeral_name_label + " (2)")
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 4030)
 
     def test_generate_ephemeral_with_1TB_split(self):
-        self._expect_generate_disk(1024, self.userdevice, self.name_label)
-        self._expect_generate_disk(1024, self.userdevice + 1, "name (1)")
+        self._expect_generate_disk(1024, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(1024, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 2048)
 
     def test_generate_ephemeral_cleans_up_on_error(self):
-        self._expect_generate_disk(2000, self.userdevice, self.name_label)
-        self._expect_generate_disk(2000, self.userdevice + 1, "name (1)")
+        self._expect_generate_disk(2000, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(2000, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
 
         vm_utils._generate_disk(self.session, self.instance, self.vm_ref,
-            str(self.userdevice + 2), "name (2)", 'ephemeral', 30 * 1024,
-            None).AndRaise(exception.NovaException)
+            str(self.userdevice + 2), "name ephemeral (2)", 'ephemeral',
+            30 * 1024, None).AndRaise(exception.NovaException)
 
         vm_utils.safe_destroy_vdis(self.session, [4, 5])
 

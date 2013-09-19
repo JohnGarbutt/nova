@@ -611,30 +611,40 @@ class MigrateDiskAndPowerOffTestCase(VMOpsTestBase):
 
 @mock.patch.object(vmops.VMOps, '_migrate_vhd')
 @mock.patch.object(vmops.VMOps, '_resize_ensure_vm_is_shutdown')
+@mock.patch.object(vm_utils, 'get_all_vdi_uuids_for_vm')
 @mock.patch.object(vmops.VMOps, '_update_instance_progress')
 @mock.patch.object(vmops.VMOps, '_apply_orig_vm_name_label')
 class MigrateDiskResizingUpTestCase(VMOpsTestBase):
-    def _fake_snapshot_attached_here(self, _session, _instance, _vm_ref,
-                                     _label):
-        self.assertTrue(isinstance(_instance, dict))
-        self.assertEqual("vm_ref", _vm_ref)
-        self.assertEqual("fake-snapshot", _label)
-        yield ["leaf", "parent", "grandp"]
+    def _fake_snapshot_attached_here(self, session, instance, vm_ref, label,
+                                     userdevice=0):
+        self.assertTrue(isinstance(instance, dict))
+        if userdevice == 0:
+            self.assertEqual("vm_ref", vm_ref)
+            self.assertEqual("fake-snapshot", label)
+            yield ["leaf", "parent", "grandp"]
+        else:
+            leaf = userdevice + "-leaf"
+            parent = userdevice + "-parent"
+            yield [leaf, parent]
 
-    def test_migrate_disk_resizing_up_works(self,
-            mock_apply_orig, mock_update_progress, mock_shutdown,
-            mock_migrate_vhd):
+    def test_migrate_disk_resizing_up_works_no_ephemeral(self,
+            mock_apply_orig, mock_update_progress, mock_get_all_vdi_uuids,
+            mock_shutdown, mock_migrate_vhd):
         context = "ctxt"
         instance = {"name": "fake", "uuid": "uuid"}
         dest = "dest"
         vm_ref = "vm_ref"
         sr_path = "sr_path"
 
+        mock_get_all_vdi_uuids.return_value = None
+
         with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
                                self._fake_snapshot_attached_here):
             self.vmops._migrate_disk_resizing_up(context, instance, dest,
                                                  vm_ref, sr_path)
 
+        mock_get_all_vdi_uuids.assert_called_once_with(self.vmops._session,
+                vm_ref, min_userdevice=4)
         mock_apply_orig.assert_called_once_with(instance, vm_ref)
         mock_shutdown.assert_called_once_with(instance, vm_ref)
 
@@ -649,11 +659,47 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
                          mock.call(context, instance, 4, 5)]
         self.assertEqual(prog_expected, mock_update_progress.call_args_list)
 
+    def test_migrate_disk_resizing_up_works_with_two_ephemeral(self,
+            mock_apply_orig, mock_update_progress, mock_get_all_vdi_uuids,
+            mock_shutdown, mock_migrate_vhd):
+        context = "ctxt"
+        instance = {"name": "fake", "uuid": "uuid"}
+        dest = "dest"
+        vm_ref = "vm_ref"
+        sr_path = "sr_path"
+
+        mock_get_all_vdi_uuids.return_value = ["vdi-eph1", "vdi-eph2"]
+
+        with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
+                               self._fake_snapshot_attached_here):
+            self.vmops._migrate_disk_resizing_up(context, instance, dest,
+                                                 vm_ref, sr_path)
+
+        mock_get_all_vdi_uuids.assert_called_once_with(self.vmops._session,
+                vm_ref, min_userdevice=4)
+        mock_apply_orig.assert_called_once_with(instance, vm_ref)
+        mock_shutdown.assert_called_once_with(instance, vm_ref)
+
+        m_vhd_expected = [mock.call(instance, "parent", dest, sr_path, 1),
+                          mock.call(instance, "grandp", dest, sr_path, 2),
+                          mock.call(instance, "4-parent", dest, sr_path, 1, 1),
+                          mock.call(instance, "5-parent", dest, sr_path, 1, 2),
+                          mock.call(instance, "leaf", dest, sr_path, 0),
+                          mock.call(instance, "4-leaf", dest, sr_path, 0, 1),
+                          mock.call(instance, "5-leaf", dest, sr_path, 0, 2)]
+        self.assertEqual(m_vhd_expected, mock_migrate_vhd.call_args_list)
+
+        prog_expected = [mock.call(context, instance, 1, 5),
+                         mock.call(context, instance, 2, 5),
+                         mock.call(context, instance, 3, 5),
+                         mock.call(context, instance, 4, 5)]
+        self.assertEqual(prog_expected, mock_update_progress.call_args_list)
+
     @mock.patch.object(vmops.VMOps, '_restore_orig_vm_and_cleanup_orphan')
     def test_migrate_disk_resizing_up_rollback(self,
             mock_restore,
-            mock_apply_orig, mock_update_progress, mock_shutdown,
-            mock_migrate_vhd):
+            mock_apply_orig, mock_update_progress, mock_get_all_vdi_uuids,
+            mock_shutdown, mock_migrate_vhd):
         context = "ctxt"
         instance = {"name": "fake", "uuid": "fake"}
         dest = "dest"
