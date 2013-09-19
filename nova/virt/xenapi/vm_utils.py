@@ -642,6 +642,10 @@ def _vdi_get_rec(session, vdi_ref):
     return session.call_xenapi("VDI.get_record", vdi_ref)
 
 
+def _vdi_snapshot(session, vdi_ref):
+    return session.call_xenapi("VDI.snapshot", vdi_ref, {})
+
+
 def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
     vbd_refs = _vm_get_vbd_refs(session, vm_ref)
     for vbd_ref in vbd_refs:
@@ -657,37 +661,35 @@ def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
 
 @contextlib.contextmanager
 def snapshot_attached_here(session, instance, vm_ref, label, userdevice='0',
-                           *args):
+                           task_state_callback=None):
     # impl method allow easier patching for tests
     return _snapshot_attached_here_impl(session, instance, vm_ref, label,
-                                        userdevice, *args)
+                                        userdevice, task_state_callback)
 
 
 def _snapshot_attached_here_impl(session, instance, vm_ref, label, userdevice,
-                                 *args):
-    update_task_state = None
-    if len(args) == 1:
-        update_task_state = args[0]
+                                 task_state_callback):
+    """Snapshot disk and return a list of uuids for the vhds in the chain."""
+    LOG.debug(_("Taking snapshot of userdevice: %s") % userdevice,
+              instance=instance)
 
-    """Snapshot the root disk only.  Return a list of uuids for the vhds
-    in the chain.
-    """
-    LOG.debug(_("Starting snapshot for VM"), instance=instance)
-
-    # Memorize the original_parent_uuid so we can poll for coalesce
     vm_vdi_ref, vm_vdi_rec = get_vdi_for_vm_safely(session, vm_ref, userdevice)
+    # Memorize the original_parent_uuid so we can poll for coalesce
     original_parent_uuid = _get_vhd_parent_uuid(session, vm_vdi_ref)
     sr_ref = vm_vdi_rec["SR"]
 
-    snapshot_ref = session.call_xenapi("VDI.snapshot", vm_vdi_ref, {})
-    if update_task_state is not None:
-        update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
+    snapshot_ref = _vdi_snapshot(session, vm_vdi_ref)
     try:
-        snapshot_rec = session.call_xenapi("VDI.get_record", snapshot_ref)
+        if task_state_callback is not None:
+            task_state_callback(task_state=task_states.IMAGE_PENDING_UPLOAD)
+
+        snapshot_vdi_rec = _vdi_get_rec(session, snapshot_ref)
         _wait_for_vhd_coalesce(session, instance, sr_ref, vm_vdi_ref,
-                original_parent_uuid)
+                               original_parent_uuid)
+
+        snapshot_vdi_uuid = snapshot_vdi_rec['uuid']
         vdi_uuids = [vdi_rec['uuid'] for vdi_rec in
-                _walk_vdi_chain(session, snapshot_rec['uuid'])]
+                        _walk_vdi_chain(session, snapshot_vdi_uuid)]
         yield vdi_uuids
     finally:
         safe_destroy_vdis(session, [snapshot_ref])

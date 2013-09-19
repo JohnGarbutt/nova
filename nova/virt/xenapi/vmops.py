@@ -769,7 +769,7 @@ class VMOps(object):
 
         with vm_utils.snapshot_attached_here(
                 self._session, instance, vm_ref, label,
-                update_task_state) as vdi_uuids:
+                task_state_callback=update_task_state) as vdi_uuids:
             update_task_state(task_state=task_states.IMAGE_UPLOADING,
                               expected_state=task_states.IMAGE_PENDING_UPLOAD)
             self.image_upload_handler.upload_image(context,

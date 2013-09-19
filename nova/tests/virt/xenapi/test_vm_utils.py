@@ -1205,3 +1205,48 @@ class SnapshotAttachedHereTestCase(test.TestCase):
 
         self.assertEqual([], vdi_get_rec.call_args_list)
         self.assertEqual(2, len(vbd_get_rec.call_args_list))
+
+    def test_snapshot_attached_here_calls_impl(self):
+
+        def fake_snapshot_attached_here_impl(session, instance, vm_ref,
+                                         label, userdevice,
+                                         update_task_state):
+            self.assertEqual("session", session)
+            self.assertEqual("instance", instance)
+            self.assertEqual("vm_ref", vm_ref)
+            self.assertEqual("label", label)
+            self.assertEqual("userdevice", userdevice)
+            self.assertEqual("update_task_state", update_task_state)
+            yield "vdis"
+
+        with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
+                               fake_snapshot_attached_here_impl):
+            with vm_utils.snapshot_attached_here("session", "instance",
+                    "vm_ref", "label", "userdevice",
+                    "update_task_state") as vdis:
+                self.assertEqual("vdis", vdis)
+
+    @mock.patch.object(vm_utils, 'safe_destroy_vdis')
+    @mock.patch.object(vm_utils, '_walk_vdi_chain')
+    @mock.patch.object(vm_utils, '_wait_for_vhd_coalesce')
+    @mock.patch.object(vm_utils, '_vdi_get_rec')
+    @mock.patch.object(vm_utils, '_vdi_snapshot')
+    @mock.patch.object(vm_utils, '_get_vhd_parent_uuid')
+    @mock.patch.object(vm_utils, 'get_vdi_for_vm_safely')
+    def test_snapshot_attached_here_works(self, mock_get_vid, mock_get_parent,
+            mock_snapshot, mock_get_rec, mock_coalesce, mock_walk_chain,
+            mock_destroy_vdi):
+
+        mock_get_vid.return_value = ("vm_vdi_ref", {"SR": "vm_vdi_rec_sr"})
+        mock_get_parent.return_value = "parent_uuid"
+        mock_snapshot.return_value = "snapshot_ref"
+        mock_get_rec.return_value = {"uuid": "snap_uuid"}
+        mock_walk_chain.return_value = [{"uuid": "a"}, {"uuid": "b"}]
+
+        def fake_callback(task_state):
+            self.assertEqual("image_pending_upload", task_state)
+
+        with vm_utils.snapshot_attached_here("session", {"uuid": "instance"},
+                    "vm_ref", "label", "userdevice",
+                    fake_callback) as vdis:
+                self.assertEqual(["a", "b"], vdis)

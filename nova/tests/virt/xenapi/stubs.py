@@ -299,7 +299,7 @@ def stub_out_migration_methods(stubs):
         vdi_rec['other_config']['nova_disk_type'] = 'root'
         return {'uuid': vdi_rec['uuid'], 'ref': vdi_ref}
 
-    def fake_get_vdi(session, vm_ref):
+    def fake_get_vdi(session, vm_ref, userdevice='0'):
         vdi_ref_parent = fake.create_vdi('derp-parent', fakesr)
         vdi_rec_parent = fake.get_record('VDI', vdi_ref_parent)
         vdi_ref = fake.create_vdi('derp', fakesr,

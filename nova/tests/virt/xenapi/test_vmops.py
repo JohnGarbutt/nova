@@ -323,7 +323,7 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
         return ["leaf", "parent", "grandp"]
 
     def _fake_snapshot_attached_here_root(self, session, instance, vm_ref,
-                                          label, userdevice):
+                                          label, userdevice, callback):
         self.assertEqual("0", userdevice)
         yield self._fake_snapshot_attached_here(session, instance, vm_ref,
                                                 label)
@@ -332,7 +332,7 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
             mock_apply_orig, mock_update_progress, mock_shutdown,
             mock_migrate_vhd):
         context = "ctxt"
-        instance = {"name": "fake"}
+        instance = {"name": "fake", "uuid": "fake"}
         dest = "dest"
         vm_ref = "vm_ref"
         sr_path = "sr_path"
