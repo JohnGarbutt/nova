@@ -2342,23 +2342,31 @@ def ensure_correct_host(session):
                           'specified by xenapi_connection_url'))
 
 
-def move_disks(session, instance, disk_info):
+def move_disks(session, instance, disk_info, ephemeral_not_root=False):
     """Move and possibly link VHDs via the XAPI plugin."""
+    instance_uuid = instance['uuid']
+    if ephemeral_not_root:
+        instance_uuid = instance_uuid + "_ephemeral"
+
     imported_vhds = session.call_plugin_serialized(
-            'migration', 'move_vhds_into_sr', instance_uuid=instance['uuid'],
+            'migration', 'move_vhds_into_sr', instance_uuid=instance_uuid,
             sr_path=get_sr_path(session), uuid_stack=_make_uuid_stack())
 
     # Now we rescan the SR so we find the VHDs
     scan_default_sr(session)
 
-    root_uuid = imported_vhds['root']['uuid']
-    root_vdi_ref = session.call_xenapi('VDI.get_by_uuid', root_uuid)
+    vdi_uuid = imported_vhds['root']['uuid']
+    vdi_ref = session.call_xenapi('VDI.get_by_uuid', vdi_uuid)
+
+    disk_type = "root"
+    if ephemeral_not_root:
+        disk_type = "ephemeral"
 
     # Set name-label so we can find if we need to clean up a failed migration
-    _set_vdi_info(session, root_vdi_ref, 'root', instance['name'], 'root',
-                  instance)
+    _set_vdi_info(session, vdi_ref, disk_type, instance['name'],
+                  disk_type, instance)
 
-    return {'uuid': root_uuid, 'ref': root_vdi_ref}
+    return {'uuid': vdi_uuid, 'ref': vdi_ref}
 
 
 def vm_ref_or_raise(session, instance_name):

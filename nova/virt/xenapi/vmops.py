@@ -293,9 +293,17 @@ class VMOps(object):
                          network_info, image_meta, resize_instance,
                          block_device_info=None, power_on=True):
         root_vdi = vm_utils.move_disks(self._session, instance, disk_info)
+        ephemeral_vdi = None
+        if instance["ephemeral_gb"] > 0:
+            ephemeral_vdi = vm_utils.move_disks(self._session, instance,
+                                                disk_info,
+                                                ephemeral_not_root=True)
 
         if resize_instance:
             self._resize_instance(instance, root_vdi)
+            if ephemeral_vdi:
+                self._resize_instance(instance, ephemeral_vdi,
+                                      ephemeral_not_root=True)
 
         name_label = instance['name']
 
@@ -304,7 +312,8 @@ class VMOps(object):
 
         disk_image_type = vm_utils.determine_disk_image_type(image_meta)
         vm_ref = self._create_vm(context, instance, instance['name'],
-                                 {'root': root_vdi},
+                                 {'root': root_vdi,
+                                  'ephemeral': ephemeral_vdi},
                                  disk_image_type, network_info, kernel_file,
                                  ramdisk_file)
 
@@ -637,12 +646,19 @@ class VMOps(object):
             vm_utils.generate_swap(self._session, instance, vm_ref,
                                    DEVICE_SWAP, name_label, swap_mb)
 
-        # Attach (optional) ephemeral disk
         ephemeral_gb = instance_type['ephemeral_gb']
         if ephemeral_gb:
-            vm_utils.generate_ephemeral(self._session, instance, vm_ref,
-                                        DEVICE_EPHEMERAL, name_label,
-                                        ephemeral_gb)
+            ephemeral_vdi = vdis.get('ephemeral')
+            if ephemeral_vdi:
+                # attach migrated ephemeral disk
+                vm_utils.create_vbd(self._session, vm_ref,
+                                    ephemeral_vdi['ref'],
+                                    DEVICE_EPHEMERAL, bootable=False)
+            else:
+                # create specified ephemeral disk
+                vm_utils.generate_ephemeral(self._session, instance, vm_ref,
+                                            DEVICE_EPHEMERAL, name_label,
+                                            ephemeral_gb)
 
         # Attach (optional) configdrive v2 disk
         if configdrive.required_by(instance):
@@ -781,11 +797,14 @@ class VMOps(object):
         LOG.debug(_("Finished snapshot and upload for VM"),
                   instance=instance)
 
-    def _migrate_vhd(self, instance, vdi_uuid, dest, sr_path, seq_num):
+    def _migrate_vhd(self, instance, vdi_uuid, dest, sr_path, seq_num,
+                     ephemeral_not_root=False):
         LOG.debug(_("Migrating VHD '%(vdi_uuid)s' with seq_num %(seq_num)d"),
                   {'vdi_uuid': vdi_uuid, 'seq_num': seq_num},
                   instance=instance)
         instance_uuid = instance['uuid']
+        if ephemeral_not_root:
+            instance_uuid = instance_uuid + "_ephemeral"
         try:
             self._session.call_plugin_serialized('migration', 'transfer_vhd',
                     instance_uuid=instance_uuid, host=dest, vdi_uuid=vdi_uuid,
@@ -901,12 +920,19 @@ class VMOps(object):
                 self._migrate_vhd(instance, vdi_uuid, dest, sr_path, seq_num)
 
         @step
-        def power_down_instance():
-            self._resize_ensure_vm_is_shutdown(instance, vm_ref)
+        def transfer_ephemeral_immutable_vhds(parent_vdi_uuids):
+            for i, vdi_uuid in enumerate(parent_vdi_uuids):
+                seq_num = i + 1
+                self._migrate_vhd(instance, vdi_uuid, dest, sr_path, seq_num)
 
         @step
-        def transfer_leaf_vhd(leaf_vdi_uuid):
-            self._migrate_vhd(instance, leaf_vdi_uuid, dest, sr_path, 0)
+        def power_down_and_transfer_leaf_vhds(root_vdi_uuid,
+                                              ephemeral_vdi_uuid=None):
+            self._resize_ensure_vm_is_shutdown(instance, vm_ref)
+            self._migrate_vhd(instance, root_vdi_uuid, dest, sr_path, 0)
+            if ephemeral_vdi_uuid:
+                self._migrate_vhd(instance, ephemeral_vdi_uuid, dest,
+                                  sr_path, 0)
 
         @step
         def fake_step_to_be_executed_by_finish_migration():
@@ -921,12 +947,23 @@ class VMOps(object):
                     userdevice=DEVICE_ROOT) as root_vdi_uuids:
                 fake_step_to_show_snapshot_complete()
 
-                active_vdi_uuid = root_vdi_uuids[0]
-                immutable_vdi_uuids = root_vdi_uuids[1:]
+                active_root_vdi_uuid = root_vdi_uuids[0]
+                immutable_root_vdi_uuids = root_vdi_uuids[1:]
+                transfer_immutable_vhds(immutable_root_vdi_uuids)
 
-                transfer_immutable_vhds(immutable_vdi_uuids)
-                power_down_instance()
-                transfer_leaf_vhd(active_vdi_uuid)
+                if instance["ephemeral_gb"] > 0:
+                    with vm_utils.snapshot_attached_here(
+                            self._session, instance, vm_ref, label,
+                            userdevice=DEVICE_EPHEMERAL) as ephemeral_vdi_uuids:
+
+                        active_ephemeral_vdi_uuid = ephemeral_vdi_uuids[0]
+                        immutable_ephemeral_vdi_uuids = root_vdi_uuids[1:]
+                        transfer_ephemeral_immutable_vhds(immutable_ephemeral_vdi_uuids)
+
+                        power_down_and_transfer_leaf_vhds(active_root_vdi_uuid,
+                                                          active_ephemeral_vdi_uuid)
+                else:
+                    power_down_and_transfer_leaf_vhds(active_root_vdi_uuid)
 
         except Exception as error:
             LOG.exception(_("_migrate_disk_resizing_up failed. "
@@ -1002,10 +1039,13 @@ class VMOps(object):
             self._volumeops.detach_volume(connection_info, name_label,
                                           mount_device)
 
-    def _resize_instance(self, instance, root_vdi):
+    def _resize_instance(self, instance, root_vdi, ephemeral_not_root=False):
         """Resize an instances root disk."""
+        size_gb = instance['root_gb']
+        if ephemeral_not_root:
+            size_gb = instance['ephemeral_gb']
 
-        new_disk_size = instance['root_gb'] * 1024 * 1024 * 1024
+        new_disk_size = size_gb * 1024 * 1024 * 1024
         if not new_disk_size:
             return
 
