@@ -923,7 +923,8 @@ class VMOps(object):
         def transfer_ephemeral_immutable_vhds(parent_vdi_uuids):
             for i, vdi_uuid in enumerate(parent_vdi_uuids):
                 seq_num = i + 1
-                self._migrate_vhd(instance, vdi_uuid, dest, sr_path, seq_num)
+                self._migrate_vhd(instance, vdi_uuid, dest, sr_path, seq_num,
+                                  ephemeral_not_root=True)
 
         @step
         def power_down_and_transfer_leaf_vhds(root_vdi_uuid,
@@ -932,7 +933,7 @@ class VMOps(object):
             self._migrate_vhd(instance, root_vdi_uuid, dest, sr_path, 0)
             if ephemeral_vdi_uuid:
                 self._migrate_vhd(instance, ephemeral_vdi_uuid, dest,
-                                  sr_path, 0)
+                                  sr_path, 0, ephemeral_not_root=True)
 
         @step
         def fake_step_to_be_executed_by_finish_migration():
