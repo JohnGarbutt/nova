@@ -320,7 +320,12 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
         self.assertTrue(isinstance(_instance, dict))
         self.assertEqual("vm_ref", _vm_ref)
         self.assertEqual("fake-snapshot", _label)
-        yield ["leaf", "parent", "grandp"]
+        return ["leaf", "parent", "grandp"]
+
+    def _fake_snapshot_attached_here_root(self, session, instance, vm_ref,
+                                          label, userdevice):
+        self.assertEqual("0", userdevice)
+        yield self._fake_snapshot_attached_here(session, instance, vm_ref, label)
 
     def test_migrate_disk_resizing_up_works(self,
             mock_apply_orig, mock_update_progress, mock_shutdown,
@@ -332,7 +337,7 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
         sr_path = "sr_path"
 
         with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
-                               self._fake_snapshot_attached_here):
+                               self._fake_snapshot_attached_here_root):
             self.vmops._migrate_disk_resizing_up(context, instance, dest,
                                                  vm_ref, sr_path)
 
@@ -365,7 +370,7 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
         mock_restore.side_effect = test.TestingException
 
         with mock.patch.object(vm_utils, '_snapshot_attached_here_impl',
-                               self._fake_snapshot_attached_here):
+                               self._fake_snapshot_attached_here_root):
             self.assertRaises(exception.InstanceFaultRollback,
                               self.vmops._migrate_disk_resizing_up,
                               context, instance, dest, vm_ref, sr_path)

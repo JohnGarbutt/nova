@@ -918,11 +918,12 @@ class VMOps(object):
             label = "%s-snapshot" % instance['name']
 
             with vm_utils.snapshot_attached_here(
-                    self._session, instance, vm_ref, label) as vdi_uuids:
+                    self._session, instance, vm_ref, label,
+                    userdevice=DEVICE_ROOT) as root_vdi_uuids:
                 fake_step_to_show_snapshot_complete()
 
-                active_vdi_uuid = vdi_uuids[0]
-                immutable_vdi_uuids = vdi_uuids[1:]
+                active_vdi_uuid = root_vdi_uuids[0]
+                immutable_vdi_uuids = root_vdi_uuids[1:]
 
                 transfer_immutable_vhds(immutable_vdi_uuids)
                 power_down_instance()

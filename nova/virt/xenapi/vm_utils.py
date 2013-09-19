@@ -630,26 +630,28 @@ def _set_vdi_info(session, vdi_ref, vdi_type, name_label, description,
                     "VDI.add_to_other_config", vdi_ref, key, value)
 
 
-def get_vdi_for_vm_safely(session, vm_ref):
+def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
     """Retrieves the primary VDI for a VM."""
     vbd_refs = session.call_xenapi("VM.get_VBDs", vm_ref)
     for vbd in vbd_refs:
         vbd_rec = session.call_xenapi("VBD.get_record", vbd)
         # Convention dictates the primary VDI will be userdevice 0
-        if vbd_rec['userdevice'] == '0':
+        if vbd_rec['userdevice'] == userdevice:
             vdi_rec = session.call_xenapi("VDI.get_record", vbd_rec['VDI'])
             return vbd_rec['VDI'], vdi_rec
     raise exception.NovaException(_("No primary VDI found for %s") % vm_ref)
 
 
 @contextlib.contextmanager
-def snapshot_attached_here(session, instance, vm_ref, label, *args):
+def snapshot_attached_here(session, instance, vm_ref, label, userdevice='0',
+                           *args):
     # impl method allow easier patching for tests
     return _snapshot_attached_here_impl(session, instance, vm_ref, label,
-                                        *args)
+                                        userdevice, *args)
 
 
-def _snapshot_attached_here_impl(session, instance, vm_ref, label, *args):
+def _snapshot_attached_here_impl(session, instance, vm_ref, label, userdevice,
+                                 *args):
     update_task_state = None
     if len(args) == 1:
         update_task_state = args[0]
@@ -660,7 +662,7 @@ def _snapshot_attached_here_impl(session, instance, vm_ref, label, *args):
     LOG.debug(_("Starting snapshot for VM"), instance=instance)
 
     # Memorize the original_parent_uuid so we can poll for coalesce
-    vm_vdi_ref, vm_vdi_rec = get_vdi_for_vm_safely(session, vm_ref)
+    vm_vdi_ref, vm_vdi_rec = get_vdi_for_vm_safely(session, vm_ref, userdevice)
     original_parent_uuid = _get_vhd_parent_uuid(session, vm_vdi_ref)
     sr_ref = vm_vdi_rec["SR"]
 
