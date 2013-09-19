@@ -630,16 +630,29 @@ def _set_vdi_info(session, vdi_ref, vdi_type, name_label, description,
                     "VDI.add_to_other_config", vdi_ref, key, value)
 
 
+def _vm_get_vbd_refs(session, vm_ref):
+    return session.call_xenapi("VM.get_VBDs", vm_ref)
+
+
+def _vbd_get_rec(session, vbd_ref):
+    return session.call_xenapi("VBD.get_record", vbd_ref)
+
+
+def _vdi_get_rec(session, vdi_ref):
+    return session.call_xenapi("VDI.get_record", vdi_ref)
+
+
 def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
-    """Retrieves the primary VDI for a VM."""
-    vbd_refs = session.call_xenapi("VM.get_VBDs", vm_ref)
-    for vbd in vbd_refs:
-        vbd_rec = session.call_xenapi("VBD.get_record", vbd)
-        # Convention dictates the primary VDI will be userdevice 0
+    vbd_refs = _vm_get_vbd_refs(session, vm_ref)
+    for vbd_ref in vbd_refs:
+        vbd_rec = _vbd_get_rec(session, vbd_ref)
         if vbd_rec['userdevice'] == userdevice:
-            vdi_rec = session.call_xenapi("VDI.get_record", vbd_rec['VDI'])
-            return vbd_rec['VDI'], vdi_rec
-    raise exception.NovaException(_("No primary VDI found for %s") % vm_ref)
+            vdi_ref = vbd_rec['VDI']
+            vdi_rec = _vdi_get_rec(session, vdi_ref)
+            return vdi_ref, vdi_rec
+    reason = _("No VDI found for VM: %(vm)s userdevice: %(userdevice)s") \
+                % dict(vm=vm_ref, userdevice=userdevice)
+    raise exception.NovaException(reason)
 
 
 @contextlib.contextmanager

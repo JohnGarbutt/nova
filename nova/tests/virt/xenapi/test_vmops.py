@@ -325,7 +325,8 @@ class MigrateDiskResizingUpTestCase(VMOpsTestBase):
     def _fake_snapshot_attached_here_root(self, session, instance, vm_ref,
                                           label, userdevice):
         self.assertEqual("0", userdevice)
-        yield self._fake_snapshot_attached_here(session, instance, vm_ref, label)
+        yield self._fake_snapshot_attached_here(session, instance, vm_ref,
+                                                label)
 
     def test_migrate_disk_resizing_up_works(self,
             mock_apply_orig, mock_update_progress, mock_shutdown,

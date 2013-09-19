@@ -21,7 +21,6 @@ Management class for VM-related functions (spawn, reboot, etc).
 
 import base64
 import functools
-import itertools
 import time
 import zlib
 
