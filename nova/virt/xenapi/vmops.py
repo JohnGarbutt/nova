@@ -618,7 +618,7 @@ class VMOps(object):
 
             if instance['auto_disk_config']:
                 LOG.debug(_("Auto configuring disk, attempting to "
-                            "resize partition..."), instance=instance)
+                            "resize root disk..."), instance=instance)
                 vm_utils.try_auto_configure_disk(self._session,
                                                  root_vdi['ref'],
                                                  instance_type['root_gb'])
@@ -650,6 +650,13 @@ class VMOps(object):
         if ephemeral_gb:
             ephemeral_vdi = vdis.get('ephemeral')
             if ephemeral_vdi:
+                if instance['auto_disk_config']:
+                    LOG.debug(_("Auto configuring disk, attempting to "
+                                "resize ephemeral disk..."), instance=instance)
+                    vm_utils.try_auto_configure_disk(self._session,
+                                                     ephemeral_vdi['ref'],
+                                                     instance_type['ephemeral_gb'])
+
                 # attach migrated ephemeral disk
                 vm_utils.create_vbd(self._session, vm_ref,
                                     ephemeral_vdi['ref'],
@@ -1017,8 +1024,6 @@ class VMOps(object):
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
         else:
-            if instance["ephemeral_gb"] != instance_type["ephemeral_gb"]:
-                raise NotImplementedError("Unable to resize ephemeral disk")
             self._migrate_disk_resizing_up(
                     context, instance, dest, vm_ref, sr_path)
 
