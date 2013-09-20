@@ -659,6 +659,16 @@ def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
     raise exception.NovaException(reason)
 
 
+def get_all_vdis_for_vm(session, vm_ref, min_userdevice=0):
+    vbd_refs = _vm_get_vbd_refs(session, vm_ref)
+    for vbd_ref in vbd_refs:
+        vbd_rec = _vbd_get_rec(session, vbd_ref)
+        if int(vbd_rec['userdevice']) >= min_userdevice:
+            vdi_ref = vbd_rec['VDI']
+            vdi_rec = _vdi_get_rec(session, vdi_ref)
+            yield vdi_rec['uuid']
+
+
 @contextlib.contextmanager
 def snapshot_attached_here(session, instance, vm_ref, label, userdevice='0',
                            task_state_callback=None):
@@ -952,18 +962,13 @@ def generate_swap(session, instance, vm_ref, userdevice, name_label, swap_mb):
                    'swap', swap_mb, fs_type)
 
 
-def get_ephemeral_split_point(size_gb):
-    if total_size_gb % 1024 == 0:
-        return 1024
-    else:
-        return 2000
-
-
-
 def generate_ephemeral(session, instance, vm_ref, first_userdevice,
                        initial_name_label, total_size_gb):
     # NOTE(johngarbutt): max possible size of a VHD disk is 2043GB
-    max_size_gb = get_ephemeral_split_point(total_size_gb)
+    if total_size_gb % 1024 == 0:
+        max_size_gb = 1024
+    else:
+        max_size_gb = 2000
 
     left_to_allocate = total_size_gb
     first_userdevice = int(first_userdevice)
