@@ -1024,6 +1024,10 @@ class VMOps(object):
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
         else:
+            ephemeral_size = instance_type["ephemeral_gb"]
+            if ephemeral_size > get_ephemeral_split_point(ephemeral_size):
+                raise NotImplementedError("Unable to resize down if instance "
+                                          "has multiple ephemeral disks")
             self._migrate_disk_resizing_up(
                     context, instance, dest, vm_ref, sr_path)
 

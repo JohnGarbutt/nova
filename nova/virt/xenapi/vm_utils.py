@@ -952,13 +952,18 @@ def generate_swap(session, instance, vm_ref, userdevice, name_label, swap_mb):
                    'swap', swap_mb, fs_type)
 
 
+def get_ephemeral_split_point(size_gb):
+    if total_size_gb % 1024 == 0:
+        return 1024
+    else:
+        return 2000
+
+
+
 def generate_ephemeral(session, instance, vm_ref, first_userdevice,
                        initial_name_label, total_size_gb):
     # NOTE(johngarbutt): max possible size of a VHD disk is 2043GB
-    if total_size_gb % 1024 == 0:
-        max_size_gb = 1024
-    else:
-        max_size_gb = 2000
+    max_size_gb = get_ephemeral_split_point(total_size_gb)
 
     left_to_allocate = total_size_gb
     first_userdevice = int(first_userdevice)
