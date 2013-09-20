@@ -855,6 +855,10 @@ class VMOps(object):
 
     def _migrate_disk_resizing_down(self, context, instance, dest,
                                     instance_type, vm_ref, sr_path):
+        if instance_type["ephemeral_gb"] > 0:
+            raise NotImplementedError("Unable to resize down if instance "
+                                      "has an ephemeral disk")
+
         step = make_step_decorator(context, instance,
                                    self._update_instance_progress)
 
@@ -913,6 +917,11 @@ class VMOps(object):
 
     def _migrate_disk_resizing_up(self, context, instance, dest, vm_ref,
                                   sr_path):
+        ephemeral_size = instance_type["ephemeral_gb"]
+        if ephemeral_size > get_ephemeral_split_point(ephemeral_size):
+            raise NotImplementedError("Unable to resize down if instance "
+                                      "has multiple ephemeral disks")
+
         step = make_step_decorator(context, instance,
                                    self._update_instance_progress)
 
@@ -991,10 +1000,18 @@ class VMOps(object):
         name_label = self._get_orig_vm_name_label(instance)
         vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
 
-    def _is_resize_down(self, instance, instance_type, value):
+    def _is_resize_down_for_disk(self, instance, instance_type, value):
         old_gb = instance[value]
         new_gb = instance_type[value]
         return old_gb > new_gb
+
+    def _is_resize_down(self, instance, instance_type):
+        resize_down_root = self._is_resize_down(instance, instance_type,
+                                                "root_gb")
+        resize_down_ephemeral = self._is_resize_down(instance, instance_type,
+                                                     "ephemeral_gb")
+        return resize_down_root or resize_down_ephemeral
+
 
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    instance_type, block_device_info):
@@ -1013,21 +1030,10 @@ class VMOps(object):
         vm_ref = self._get_vm_opaque_ref(instance)
         sr_path = vm_utils.get_sr_path(self._session)
 
-        resize_down_root = self._is_resize_down(instance, instance_type,
-                                                "root_gb")
-        resize_down_ephemeral = self._is_resize_down(instance, instance_type,
-                                                     "ephemeral_gb")
-        if resize_down_root or resize_down_ephemeral:
-            if instance_type["ephemeral_gb"] > 0:
-                raise NotImplementedError("Unable to resize down if instance "
-                                          "has an ephemeral disk")
+        if self._is_resize_down(instance, instance_type):
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
         else:
-            ephemeral_size = instance_type["ephemeral_gb"]
-            if ephemeral_size > get_ephemeral_split_point(ephemeral_size):
-                raise NotImplementedError("Unable to resize down if instance "
-                                          "has multiple ephemeral disks")
             self._migrate_disk_resizing_up(
                     context, instance, dest, vm_ref, sr_path)
 
