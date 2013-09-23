@@ -659,7 +659,7 @@ def get_vdi_for_vm_safely(session, vm_ref, userdevice='0'):
     raise exception.NovaException(reason)
 
 
-def get_all_vdis_for_vm(session, vm_ref, min_userdevice=0):
+def get_all_vdi_uuids_for_vm(session, vm_ref, min_userdevice=0):
     vbd_refs = _vm_get_vbd_refs(session, vm_ref)
     for vbd_ref in vbd_refs:
         vbd_rec = _vbd_get_rec(session, vbd_ref)
