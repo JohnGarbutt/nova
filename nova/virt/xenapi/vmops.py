@@ -300,8 +300,8 @@ class VMOps(object):
             disk_number = i + 1
             ephemeral_vdi = vm_utils.move_disks(self._session, instance,
                                                 disk_info, disk_number)
-            userdevice = DEVICE_EPHEMERAL + i
-            ephemeral_vdis[userdevice] = ephemeral_vdi
+            userdevice = int(DEVICE_EPHEMERAL) + i
+            ephemeral_vdis[str(userdevice)] = ephemeral_vdi
 
         if resize_instance:
             self._resize_instance(instance, root_vdi)
@@ -942,9 +942,9 @@ class VMOps(object):
                 remaining_chains = ephemeral_chains[1:]
 
             ephemeral_disk_index = len(active_vdi_uuids)
-            userdevice = DEVICE_EPHEMERAL + ephemeral_disk_index
+            userdevice = int(DEVICE_EPHEMERAL) + ephemeral_disk_index
             with vm_utils.snapshot_attached_here(self._session, instance,
-                    vm_ref, label, userdevice) as chain_vdi_uuids:
+                    vm_ref, label, str(userdevice)) as chain_vdi_uuids:
 
                 # remember active vdi, we will migrate this later
                 active_vdi_uuids.append(chain_vdi_uuids[0])
