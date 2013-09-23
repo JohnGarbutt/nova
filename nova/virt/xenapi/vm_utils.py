@@ -975,11 +975,12 @@ def get_ephemral_disk_sizes(total_size_gb):
 
 
 def generate_ephemeral(session, instance, vm_ref, first_userdevice,
-                       initial_name_label, total_size_gb):
+                       instance_name_label, total_size_gb):
     # NOTE(johngarbutt): max possible size of a VHD disk is 2043GB
 
     first_userdevice = int(first_userdevice)
     userdevice = first_userdevice
+    initial_name_label = instance_name_label + " ephemeral"
     name_label = initial_name_label
 
     vdi_refs = []
