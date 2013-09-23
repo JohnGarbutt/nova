@@ -1055,8 +1055,8 @@ class VMOps(object):
         vm_ref = self._get_vm_opaque_ref(instance)
         sr_path = vm_utils.get_sr_path(self._session)
 
-        old_gb = instance["root_gb"]
-        new_gb = instance_type["root_gb"]
+        old_gb = instance['root_gb']
+        new_gb = instance_type['root_gb']
         resize_down = old_gb > new_gb
 
         if resize_down:
