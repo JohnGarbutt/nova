@@ -962,30 +962,33 @@ def generate_swap(session, instance, vm_ref, userdevice, name_label, swap_mb):
                    'swap', swap_mb, fs_type)
 
 
+def get_ephemral_disk_sizes(total_size_gb):
+    max_size_gb = 2000
+    if total_size_gb % 1024 == 0:
+        max_size_gb = 1024
+
+    left_to_allocate = total_size_gb
+    while left_to_allocate > 0:
+        size_gb = min(max_size_gb, left_to_allocate)
+        yield size_gb
+        left_to_allocate -= size_gb
+
+
 def generate_ephemeral(session, instance, vm_ref, first_userdevice,
                        initial_name_label, total_size_gb):
     # NOTE(johngarbutt): max possible size of a VHD disk is 2043GB
-    if total_size_gb % 1024 == 0:
-        max_size_gb = 1024
-    else:
-        max_size_gb = 2000
 
-    left_to_allocate = total_size_gb
     first_userdevice = int(first_userdevice)
     userdevice = first_userdevice
     name_label = initial_name_label
 
     vdi_refs = []
     try:
-        while left_to_allocate > 0:
-            size_gb = min(max_size_gb, left_to_allocate)
-
+        for size_gb in get_ephemral_disk_sizes(total_size_gb):
             ref = _generate_disk(session, instance, vm_ref, str(userdevice),
                                  name_label, 'ephemeral', size_gb * 1024,
                                  CONF.default_ephemeral_format)
             vdi_refs.append(ref)
-
-            left_to_allocate -= size_gb
             userdevice += 1
             label_number = userdevice - first_userdevice
             name_label = "%s (%d)" % (initial_name_label, label_number)
@@ -2352,11 +2355,11 @@ def ensure_correct_host(session):
                           'specified by xenapi_connection_url'))
 
 
-def move_disks(session, instance, disk_info, ephemeral_not_root=False):
+def move_disks(session, instance, disk_info, ephemeral_number=0):
     """Move and possibly link VHDs via the XAPI plugin."""
     instance_uuid = instance['uuid']
-    if ephemeral_not_root:
-        instance_uuid = instance_uuid + "_ephemeral"
+    if ephemeral_number > 0:
+        instance_uuid = instance_uuid + "_ephemeral_%d" % ephemeral_number
 
     imported_vhds = session.call_plugin_serialized(
             'migration', 'move_vhds_into_sr', instance_uuid=instance_uuid,
@@ -2369,7 +2372,7 @@ def move_disks(session, instance, disk_info, ephemeral_not_root=False):
     vdi_ref = session.call_xenapi('VDI.get_by_uuid', vdi_uuid)
 
     disk_type = "root"
-    if ephemeral_not_root:
+    if ephemeral_number > 0:
         disk_type = "ephemeral"
 
     # Set name-label so we can find if we need to clean up a failed migration

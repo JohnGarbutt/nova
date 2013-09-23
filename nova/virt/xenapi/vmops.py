@@ -293,11 +293,15 @@ class VMOps(object):
                          network_info, image_meta, resize_instance,
                          block_device_info=None, power_on=True):
         root_vdi = vm_utils.move_disks(self._session, instance, disk_info)
-        ephemeral_vdi = None
-        if instance["ephemeral_gb"] > 0:
+        ephemeral_vdis = {}
+        total_ephemeral_size_gb = instance["ephemeral_gb"]
+        disk_sizes = vm_utils.get_ephemral_disk_sizes(total_ephemeral_size_gb)
+        for i, _size in enumerate(disk_sizes):
+            disk_number = i + 1
             ephemeral_vdi = vm_utils.move_disks(self._session, instance,
-                                                disk_info,
-                                                ephemeral_not_root=True)
+                                                disk_info, disk_number)
+            userdevice = DEVICE_EPHEMERAL + i
+            ephemeral_vdis[userdevice] = ephemeral_vdi
 
         if resize_instance:
             self._resize_instance(instance, root_vdi)
@@ -313,7 +317,7 @@ class VMOps(object):
         disk_image_type = vm_utils.determine_disk_image_type(image_meta)
         vm_ref = self._create_vm(context, instance, instance['name'],
                                  {'root': root_vdi,
-                                  'ephemeral': ephemeral_vdi},
+                                  'ephemeral': ephemeral_vdis},
                                  disk_image_type, network_info, kernel_file,
                                  ramdisk_file)
 
@@ -648,18 +652,12 @@ class VMOps(object):
 
         ephemeral_gb = instance_type['ephemeral_gb']
         if ephemeral_gb:
-            ephemeral_vdi = vdis.get('ephemeral')
-            if ephemeral_vdi:
-                if instance['auto_disk_config']:
-                    LOG.debug(_("Auto configuring disk, attempting to "
-                                "resize ephemeral disk..."), instance=instance)
-                    vm_utils.try_auto_configure_disk(self._session,
-                          ephemeral_vdi['ref'], instance_type['ephemeral_gb'])
-
-                # attach migrated ephemeral disk
-                vm_utils.create_vbd(self._session, vm_ref,
-                                    ephemeral_vdi['ref'],
-                                    DEVICE_EPHEMERAL, bootable=False)
+            ephemeral_vdis = vdis.get('ephemeral')
+            if ephemeral_vdis:
+                for userdevice, ephemeral_vdi in ephemeral_vdis.iteritems():
+                    vm_utils.create_vbd(self._session, vm_ref,
+                                        ephemeral_vdi['ref'],
+                                        userdevice, bootable=False)
             else:
                 # create specified ephemeral disk
                 vm_utils.generate_ephemeral(self._session, instance, vm_ref,
@@ -1030,17 +1028,13 @@ class VMOps(object):
         name_label = self._get_orig_vm_name_label(instance)
         vm_utils.set_vm_name_label(self._session, vm_ref, name_label)
 
-    def _is_resize_down_for_disk(self, instance, instance_type, value):
-        old_gb = instance[value]
-        new_gb = instance_type[value]
-        return old_gb > new_gb
+    def _ensure_not_resize_ephemeral(self, instance, instance_type):
+        old_gb = instance["ephemeral_gb"]
+        new_gb = instance_type["ephemeral_gb"]
 
-    def _is_resize_down(self, instance, instance_type):
-        resize_down_root = self._is_resize_down(instance, instance_type,
-                                                "root_gb")
-        resize_down_ephemeral = self._is_resize_down(instance, instance_type,
-                                                     "ephemeral_gb")
-        return resize_down_root or resize_down_ephemeral
+        if old_gb != new_gb:
+            reason = _("Unable to resize ephemeral disks")
+            raise exception.ResizeError(reason)
 
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    instance_type, block_device_info):
@@ -1051,6 +1045,8 @@ class VMOps(object):
         :param dest: the destination host machine.
         :param instance_type: instance_type to resize to
         """
+        self._ensure_not_resize_ephemeral(instance, instance_type)
+
         # 0. Zero out the progress to begin
         self._update_instance_progress(context, instance,
                                        step=0,
@@ -1059,7 +1055,11 @@ class VMOps(object):
         vm_ref = self._get_vm_opaque_ref(instance)
         sr_path = vm_utils.get_sr_path(self._session)
 
-        if self._is_resize_down(instance, instance_type):
+        old_gb = instance["root_gb"]
+        new_gb = instance_type["root_gb"]
+        resize_down = old_gb > new_gb
+
+        if resize_down:
             self._migrate_disk_resizing_down(
                     context, instance, dest, instance_type, vm_ref, sr_path)
         else:
