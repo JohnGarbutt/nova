@@ -280,28 +280,18 @@ class VMOps(object):
 
         def create_disks_step(undo_mgr, disk_image_type, image_meta,
                               name_label):
-            #TODO(johngarbutt) clean up the move_disks if this is not run
-            root_vdi = vm_utils.move_disks(self._session, instance, disk_info)
-
-            #TODO move this into its own method....
-            ephemeral_vdis = {}
-            total_ephemeral_size_gb = instance["ephemeral_gb"]
-            disk_sizes = vm_utils.get_ephemeral_disk_sizes(
-                                                    total_ephemeral_size_gb)
-            for i, _size in enumerate(disk_sizes):
-                disk_number = i + 1
-                ephemeral_vdi = vm_utils.move_disks(self._session, instance,
-                                                disk_info, disk_number)
-                userdevice = int(DEVICE_EPHEMERAL) + i
-                ephemeral_vdis[str(userdevice)] = ephemeral_vdi
+            root_vdi = vm_utils.import_migrated_root_disk(self._session,
+                                                          instance)
+            eph_vdis = vm_utils.import_migrate_ephemeral_disks(self._session,
+                                                               instance)
 
             def undo_create_disks():
-                vdi_refs = [vdi['ref'] for vdi in ephemeral_vdis.values()]
+                vdi_refs = [vdi['ref'] for vdi in eph_vdis.values()]
                 vdi_refs.append(root_vdi['ref'])
                 vm_utils.safe_destroy_vdis(self._session, vdi_refs)
 
             undo_mgr.undo_with(undo_create_disks)
-            return {'root': root_vdi, 'ephemeral': ephemeral_vdis}
+            return {'root': root_vdi, 'ephemerals': eph_vdis}
 
         def completed_callback():
             self._update_instance_progress(context, instance,
@@ -947,6 +937,8 @@ class VMOps(object):
                     self._session, vm_ref,
                     min_userdevice=int(DEVICE_EPHEMERAL))
             if ephemeral_chains:
+                ephemeral_chains = list(ephemeral_chains)
+            if ephemeral_chains and len(ephemeral_chains) > 0:
                 _process_ephemeral_chain_recursive(ephemeral_chains, [])
             else:
                 # TODO - this should just work with the above call?
@@ -983,7 +975,7 @@ class VMOps(object):
         except Exception as error:
             LOG.error(_("_migrate_disk_resizing_up failed. "
                         "Restoring orig vm due_to: %s."), error,
-                          instance=instance)
+                          instance=instance, exc_info=True)
             try:
                 # TODO - move power_down into a single location?
                 self._restore_orig_vm_and_cleanup_orphan(

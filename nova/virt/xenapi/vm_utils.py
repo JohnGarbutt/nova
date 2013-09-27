@@ -2390,14 +2390,31 @@ def ensure_correct_host(session):
                           'specified by xenapi_connection_url'))
 
 
-def move_disks(session, instance, disk_info, ephemeral_number=0):
-    """Move and possibly link VHDs via the XAPI plugin."""
-    instance_uuid = instance['uuid']
-    if ephemeral_number > 0:
-        instance_uuid = instance_uuid + "_ephemeral_%d" % ephemeral_number
+def import_migrated_root_disk(session, instance):
+    label = instance['uuid']
+    _import_migrated_vhds(session, instance, label)
 
+
+def import_migrate_ephemeral_disks(session, instance):
+    ephemeral_vdis = {}
+    instance_uuid = instance['uuid']
+    ephemeral_gb = instance["ephemeral_gb"]
+    disk_sizes = get_ephemeral_disk_sizes(ephemeral_gb)
+    for i, _size in enumerate(disk_sizes):
+        disk_number = i + 1
+        label = instance_uuid + "_ephemeral_%d" % disk_number
+        ephemeral_vdi = vm_utils.move_disks(self._session, instance,
+                                            disk_info, disk_number)
+
+        userdevice = int(DEVICE_EPHEMERAL) + i
+        ephemeral_vdis[str(userdevice)] = ephemeral_vdi
+
+
+def _import_migrated_vhds(session, instance, label):
+    """Move and possibly link VHDs via the XAPI plugin."""
+    # TODO - tidy up plugin
     imported_vhds = session.call_plugin_serialized(
-            'migration', 'move_vhds_into_sr', instance_uuid=instance_uuid,
+            'migration', 'move_vhds_into_sr', instance_uuid=label,
             sr_path=get_sr_path(session), uuid_stack=_make_uuid_stack())
 
     # Now we rescan the SR so we find the VHDs

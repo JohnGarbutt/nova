@@ -185,9 +185,8 @@ def stub_vm_utils_with_vdi_attached_here(function):
 
 def create_instance_with_system_metadata(context, instance_values):
     instance_type = db.flavor_get(context,
-                                         instance_values['instance_type_id'])
-    sys_meta = flavors.save_flavor_info({},
-                                                      instance_type)
+                                  instance_values['instance_type_id'])
+    sys_meta = flavors.save_flavor_info({}, instance_type)
     instance_values['system_metadata'] = sys_meta
     return db.instance_create(context, instance_values)
 
@@ -1591,7 +1590,7 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                   'kernel_id': None,
                   'ramdisk_id': None,
                   'root_gb': 80,
-                  'ephemeral_gb': 0,
+                  'ephemeral_gb': 1,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}
@@ -1692,8 +1691,10 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
     def test_migrate_disk_and_power_off_with_zero_gb_old_and_new_works(self):
         instance_type = db.flavor_get_by_name(self.context, 'm1.tiny')
         instance_type["root_gb"] = 0
+        instance_type["ephemeral_gb"] = 0
         values = copy.copy(self.instance_values)
         values["root_gb"] = 0
+        values["ephemeral_gb"] = 0
         values["instance_type"] = instance_type['id']
         instance = db.instance_create(self.context, values)
         xenapi_fake.create_vm(instance['name'], 'Running')
