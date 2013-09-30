@@ -280,18 +280,18 @@ class VMOps(object):
 
         def create_disks_step(undo_mgr, disk_image_type, image_meta,
                               name_label):
-            root_vdi = vm_utils.import_migrated_root_disk(self._session,
-                                                          instance)
-            eph_vdis = vm_utils.import_migrate_ephemeral_disks(self._session,
-                                                               instance)
+            vdis = vm_utils.import_all_migrated_disks(self._session,
+                                                      instance)
 
             def undo_create_disks():
+                eph_vdis = vdis['ephemerals']
+                root_vdi = vdis['root']
                 vdi_refs = [vdi['ref'] for vdi in eph_vdis.values()]
                 vdi_refs.append(root_vdi['ref'])
                 vm_utils.safe_destroy_vdis(self._session, vdi_refs)
 
             undo_mgr.undo_with(undo_create_disks)
-            return {'root': root_vdi, 'ephemerals': eph_vdis}
+            return vdis
 
         def completed_callback():
             self._update_instance_progress(context, instance,
