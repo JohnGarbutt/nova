@@ -929,35 +929,6 @@ class VDIOtherConfigTestCase(stubs.XenAPITestBase):
 
         self.assertEqual(expected, other_config)
 
-    def test_move_disks(self):
-        # Migrated images should preserve the `other_config`
-        other_config = {}
-
-        def VDI_add_to_other_config(ref, key, value):
-            other_config[key] = value
-
-        def VDI_get_record(ref):
-            return {'other_config': {}}
-
-        def call_plugin_serialized(*args, **kwargs):
-            return {'root': {'uuid': 'aaaa-bbbb-cccc-dddd'}}
-
-        # Stubbing on the session object and not class so we don't pollute
-        # other tests
-        self.session.VDI_add_to_other_config = VDI_add_to_other_config
-        self.session.VDI_get_record = VDI_get_record
-        self.session.call_plugin_serialized = call_plugin_serialized
-
-        self.stubs.Set(vm_utils, 'get_sr_path', lambda *a, **k: None)
-        self.stubs.Set(vm_utils, 'scan_default_sr', lambda *a, **k: None)
-
-        vm_utils.move_disks(self.session, self.fake_instance, {})
-
-        expected = {'nova_disk_type': 'root',
-                    'nova_instance_uuid': 'aaaa-bbbb-cccc-dddd'}
-
-        self.assertEqual(expected, other_config)
-
 
 class GenerateDiskTestCase(stubs.XenAPITestBase):
     def setUp(self):

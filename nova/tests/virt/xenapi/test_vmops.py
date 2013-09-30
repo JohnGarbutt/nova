@@ -433,7 +433,7 @@ class SpawnTestCase(VMOpsTestBase):
     def _test_finish_migration(self, power_on=True, resize_instance=True,
                                throw_exception=None):
         self._stub_out_common()
-        self.mox.StubOutWithMock(vm_utils, "move_disks")
+        self.mox.StubOutWithMock(vm_utils, "import_all_migrated_disks")
         self.mox.StubOutWithMock(self.vmops, "_attach_mapped_block_devices")
 
         context = "context"
@@ -453,9 +453,9 @@ class SpawnTestCase(VMOpsTestBase):
         vm_utils.determine_disk_image_type(image_meta).AndReturn(di_type)
 
         root_vdi = {"ref": "fake_ref"}
-        vdis = {"root": root_vdi}
-        vm_utils.move_disks(self.vmops._session, instance,
-                            disk_info).AndReturn(root_vdi)
+        vdis = {"root": root_vdi, "ephemerals": {}}
+        vm_utils.import_all_migrated_disks(self.vmops._session,
+                                           instance).AndReturn(vdis)
 
         kernel_file = "kernel"
         ramdisk_file = "ramdisk"

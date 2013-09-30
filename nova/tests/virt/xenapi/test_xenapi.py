@@ -1590,7 +1590,7 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                   'kernel_id': None,
                   'ramdisk_id': None,
                   'root_gb': 80,
-                  'ephemeral_gb': 1,
+                  'ephemeral_gb': 0,
                   'instance_type_id': '3',  # m1.large
                   'os_type': 'linux',
                   'architecture': 'x86-64'}
@@ -1655,19 +1655,17 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
         self.assertEqual(called['resize'], True)
 
     def test_migrate_disk_and_power_off(self):
-        self.instance_values['ephemeral_gb'] = 80
         instance = db.instance_create(self.context, self.instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
-        instance_type = db.flavor_get_by_name(self.context, 'm1.large')
+        instance_type = {"root_gb": 80, 'ephemeral_gb': 0}
         conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
         conn.migrate_disk_and_power_off(self.context, instance,
                                         '127.0.0.1', instance_type, None)
 
     def test_migrate_disk_and_power_off_passes_exceptions(self):
-        self.instance_values['ephemeral_gb'] = 80
         instance = db.instance_create(self.context, self.instance_values)
         xenapi_fake.create_vm(instance['name'], 'Running')
-        instance_type = db.flavor_get_by_name(self.context, 'm1.large')
+        instance_type = {"root_gb": 80, 'ephemeral_gb': 0}
 
         def fake_raise(*args, **kwargs):
             raise exception.MigrationError(reason='test failure')
@@ -1681,7 +1679,7 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
 
     def test_migrate_disk_and_power_off_throws_on_zero_gb_resize_down(self):
         instance = db.instance_create(self.context, self.instance_values)
-        instance_type = {"root_gb": 0}
+        instance_type = {"root_gb": 0, 'ephemeral_gb': 0}
         conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
         self.assertRaises(exception.ResizeError,
                           conn.migrate_disk_and_power_off,
@@ -1689,13 +1687,10 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
                           'fake_dest', instance_type, None)
 
     def test_migrate_disk_and_power_off_with_zero_gb_old_and_new_works(self):
-        instance_type = db.flavor_get_by_name(self.context, 'm1.tiny')
-        instance_type["root_gb"] = 0
-        instance_type["ephemeral_gb"] = 0
+        instance_type = {"root_gb": 0, 'ephemeral_gb': 0}
         values = copy.copy(self.instance_values)
         values["root_gb"] = 0
         values["ephemeral_gb"] = 0
-        values["instance_type"] = instance_type['id']
         instance = db.instance_create(self.context, values)
         xenapi_fake.create_vm(instance['name'], 'Running')
         conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
@@ -1786,12 +1781,10 @@ class XenAPIMigrateInstance(stubs.XenAPITestBase):
         self._test_finish_migrate(False)
 
     def test_finish_migrate_no_local_storage(self):
-        tiny_type = flavors.get_flavor_by_name('m1.tiny')
-        tiny_type_id = tiny_type['id']
-        self.instance_values.update({'instance_type_id': tiny_type_id,
-                                     'root_gb': 0})
-        instance = create_instance_with_system_metadata(self.context,
-                                                        self.instance_values)
+        values = copy.copy(self.instance_values)
+        values["root_gb"] = 0
+        values["ephemeral_gb"] = 0
+        instance = create_instance_with_system_metadata(self.context, values)
 
         def fake_vdi_resize(*args, **kwargs):
             raise Exception("This shouldn't be called")
