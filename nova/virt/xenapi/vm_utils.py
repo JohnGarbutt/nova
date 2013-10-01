@@ -2391,8 +2391,8 @@ def ensure_correct_host(session):
 
 
 def import_all_migrated_disks(session, instance):
-    root_vdi = vm_utils.import_migrated_root_disk(session, instance)
-    eph_vdis = vm_utils.import_migrate_ephemeral_disks(session, instance)
+    root_vdi = import_migrated_root_disk(session, instance)
+    eph_vdis = import_migrate_ephemeral_disks(session, instance)
     return {'root': root_vdi, 'ephemerals': eph_vdis}
 
 
@@ -2416,7 +2416,7 @@ def import_migrate_ephemeral_disks(session, instance):
         ephemeral_vdi = _import_migrated_vhds(session, instance,
                                               disk_label, "ephemeral",
                                               vdi_label)
-        userdevice = int(DEVICE_EPHEMERAL) + i
+        userdevice = 4 + i
         ephemeral_vdis[str(userdevice)] = ephemeral_vdi
     return ephemeral_vdis
 
@@ -2436,9 +2436,8 @@ def _import_migrated_vhds(session, instance, disk_label, disk_type,
     vdi_ref = session.call_xenapi('VDI.get_by_uuid', vdi_uuid)
 
     # Set name-label so we can find if we need to clean up a failed migration
-    _set_vdi_info(session, vdi_ref, disk_type, instance['name'],
+    _set_vdi_info(session, vdi_ref, disk_type, vdi_label,
                   disk_type, instance)
-    # TODO - we need better labels for the ephemeral disks
 
     return {'uuid': vdi_uuid, 'ref': vdi_ref}
 

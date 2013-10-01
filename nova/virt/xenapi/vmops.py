@@ -268,7 +268,7 @@ class VMOps(object):
             # We crashed before the -orig backup was made
             vm_ref = new_ref
 
-        if power_on:
+        if power_on and vm_utils.is_vm_shutdown(self._session, vm_ref):
             self._start(instance, vm_ref)
 
     def finish_migration(self, context, migration, instance, disk_info,
@@ -960,7 +960,6 @@ class VMOps(object):
             pass
 
         self._apply_orig_vm_name_label(instance, vm_ref)
-        power_on_if_error = False
         try:
             label = "%s-snapshot" % instance['name']
 
@@ -973,13 +972,11 @@ class VMOps(object):
                 transfer_ephemeral_disks_then_all_leaf_vdis()
 
         except Exception as error:
-            LOG.error(_("_migrate_disk_resizing_up failed. "
-                        "Restoring orig vm due_to: %s."), error,
-                          instance=instance, exc_info=True)
+            LOG.exception(_("_migrate_disk_resizing_up failed. "
+                            "Restoring orig vm due_to: %s."), error,
+                          instance=instance)
             try:
-                # TODO - move power_down into a single location?
-                self._restore_orig_vm_and_cleanup_orphan(
-                        instance, power_on=power_on_if_error)
+                self._restore_orig_vm_and_cleanup_orphan(instance)
             except Exception as rollback_error:
                 LOG.warn(_("Error during _migrate_disk_resizing_up "
                            "rollback: %s") % rollback_error, exc_info=True)
