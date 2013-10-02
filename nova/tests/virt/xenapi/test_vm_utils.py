@@ -930,35 +930,6 @@ class VDIOtherConfigTestCase(stubs.XenAPITestBase):
 
         self.assertEqual(expected, other_config)
 
-    def test_move_disks(self):
-        # Migrated images should preserve the `other_config`
-        other_config = {}
-
-        def VDI_add_to_other_config(ref, key, value):
-            other_config[key] = value
-
-        def VDI_get_record(ref):
-            return {'other_config': {}}
-
-        def call_plugin_serialized(*args, **kwargs):
-            return {'root': {'uuid': 'aaaa-bbbb-cccc-dddd'}}
-
-        # Stubbing on the session object and not class so we don't pollute
-        # other tests
-        self.session.VDI_add_to_other_config = VDI_add_to_other_config
-        self.session.VDI_get_record = VDI_get_record
-        self.session.call_plugin_serialized = call_plugin_serialized
-
-        self.stubs.Set(vm_utils, 'get_sr_path', lambda *a, **k: None)
-        self.stubs.Set(vm_utils, 'scan_default_sr', lambda *a, **k: None)
-
-        vm_utils.move_disks(self.session, self.fake_instance, {})
-
-        expected = {'nova_disk_type': 'root',
-                    'nova_instance_uuid': 'aaaa-bbbb-cccc-dddd'}
-
-        self.assertEqual(expected, other_config)
-
 
 class GenerateDiskTestCase(stubs.XenAPITestBase):
     def setUp(self):
@@ -1069,46 +1040,55 @@ class GenerateEphemeralTestCase(test.NoDBTestCase):
         self.instance = "instance"
         self.vm_ref = "vm_ref"
         self.name_label = "name"
+        self.ephemeral_name_label = "name ephemeral"
         self.userdevice = 4
         self.mox.StubOutWithMock(vm_utils, "_generate_disk")
         self.mox.StubOutWithMock(vm_utils, "safe_destroy_vdis")
 
     def _expect_generate_disk(self, size, device, name_label):
         vm_utils._generate_disk(self.session, self.instance, self.vm_ref,
-            str(device), name_label, 'ephemeral', size * 1024,
-            None).AndReturn(device)
+            str(device), name_label, 'ephemeral',
+            size * 1024, None).AndReturn(device)
 
     def test_generate_ephemeral_adds_one_disk(self):
-        self._expect_generate_disk(20, self.userdevice, self.name_label)
+        self._expect_generate_disk(20, self.userdevice,
+                                   self.ephemeral_name_label)
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 20)
 
     def test_generate_ephemeral_adds_multiple_disks(self):
-        self._expect_generate_disk(2000, self.userdevice, self.name_label)
-        self._expect_generate_disk(2000, self.userdevice + 1, "name (1)")
-        self._expect_generate_disk(30, self.userdevice + 2, "name (2)")
+        self._expect_generate_disk(2000, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(2000, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
+        self._expect_generate_disk(30, self.userdevice + 2,
+                                   self.ephemeral_name_label + " (2)")
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 4030)
 
     def test_generate_ephemeral_with_1TB_split(self):
-        self._expect_generate_disk(1024, self.userdevice, self.name_label)
-        self._expect_generate_disk(1024, self.userdevice + 1, "name (1)")
+        self._expect_generate_disk(1024, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(1024, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
         self.mox.ReplayAll()
 
         vm_utils.generate_ephemeral(self.session, self.instance, self.vm_ref,
             str(self.userdevice), self.name_label, 2048)
 
     def test_generate_ephemeral_cleans_up_on_error(self):
-        self._expect_generate_disk(2000, self.userdevice, self.name_label)
-        self._expect_generate_disk(2000, self.userdevice + 1, "name (1)")
+        self._expect_generate_disk(2000, self.userdevice,
+                                   self.ephemeral_name_label)
+        self._expect_generate_disk(2000, self.userdevice + 1,
+                                   self.ephemeral_name_label + " (1)")
 
         vm_utils._generate_disk(self.session, self.instance, self.vm_ref,
-            str(self.userdevice + 2), "name (2)", 'ephemeral', 30 * 1024,
-            None).AndRaise(exception.NovaException)
+            str(self.userdevice + 2), "name ephemeral (2)", 'ephemeral',
+            30 * 1024, None).AndRaise(exception.NovaException)
 
         vm_utils.safe_destroy_vdis(self.session, [4, 5])
 
@@ -1346,3 +1326,57 @@ class ScanSrTestCase(test.NoDBTestCase):
         session.call_xenapi.assert_called_with('SR.scan', "sr_ref")
         self.assertEqual(2, session.call_xenapi.call_count)
         mock_sleep.assert_called_once_with(2)
+
+
+class SnapshotAttachedHereTestCase(test.TestCase):
+    def test_vm_get_vbd_refs(self):
+        session = mock.Mock()
+        vm_utils._vm_get_vbd_refs(session, "vm_ref")
+        session.call_xenapi.assert_called_once_with("VM.get_VBDs", "vm_ref")
+
+    def test_vbd_get_rec(self):
+        session = mock.Mock()
+        vm_utils._vbd_get_rec(session, "vbd_ref")
+        session.call_xenapi.assert_called_once_with("VBD.get_record",
+                                                    "vbd_ref")
+
+    def test_vdi_get_rec(self):
+        session = mock.Mock()
+        vm_utils._vdi_get_rec(session, "vdi_ref")
+        session.call_xenapi.assert_called_once_with("VDI.get_record",
+                                                    "vdi_ref")
+
+    @mock.patch.object(vm_utils, '_vdi_get_rec')
+    @mock.patch.object(vm_utils, '_vbd_get_rec')
+    @mock.patch.object(vm_utils, '_vm_get_vbd_refs')
+    def test_get_vdi_for_vm_safely(self, vm_get_vbd_refs,
+                                           vbd_get_rec, vdi_get_rec):
+        session = "session"
+
+        vm_get_vbd_refs.return_value = ["a", "b"]
+        vbd_get_rec.return_value = {'userdevice': '0', 'VDI': 'vdi_ref'}
+        vdi_get_rec.return_value = {}
+
+        result = vm_utils.get_vdi_for_vm_safely(session, "vm_ref")
+        self.assertEqual(('vdi_ref', {}), result)
+
+        vm_get_vbd_refs.assert_called_once_with(session, "vm_ref")
+        vbd_get_rec.assert_called_once_with(session, "a")
+        vdi_get_rec.assert_called_once_with(session, "vdi_ref")
+
+    @mock.patch.object(vm_utils, '_vdi_get_rec')
+    @mock.patch.object(vm_utils, '_vbd_get_rec')
+    @mock.patch.object(vm_utils, '_vm_get_vbd_refs')
+    def test_get_vdi_for_vm_safely_fails(self, vm_get_vbd_refs,
+                                         vbd_get_rec, vdi_get_rec):
+        session = "session"
+
+        vm_get_vbd_refs.return_value = ["a", "b"]
+        vbd_get_rec.return_value = {'userdevice': '1', 'VDI': 'vdi_ref'}
+
+        self.assertRaises(exception.NovaException,
+                          vm_utils.get_vdi_for_vm_safely,
+                          session, "vm_ref")
+
+        self.assertEqual([], vdi_get_rec.call_args_list)
+        self.assertEqual(2, len(vbd_get_rec.call_args_list))
