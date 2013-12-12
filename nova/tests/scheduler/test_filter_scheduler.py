@@ -214,6 +214,7 @@ class FilterSchedulerTestCase(test_scheduler.SchedulerTestCase):
     def test_retry_disabled(self):
         # Retry info should not get populated when re-scheduling is off.
         self.flags(scheduler_max_attempts=1)
+        self.flags(scheduler_max_race_attempts=1)
         sched = fakes.FakeFilterScheduler()
 
         instance_properties = {'project_id': '12345', 'os_type': 'Linux'}
@@ -311,11 +312,40 @@ class FilterSchedulerTestCase(test_scheduler.SchedulerTestCase):
         num_attempts = filter_properties['retry']['num_attempts']
         self.assertEqual(2, num_attempts)
 
-    def test_retry_exceeded_max_attempts(self):
+    def test_retry_attempt_two_race_condition(self):
+        # Test retry logic when re-scheduling.
+        self.flags(scheduler_max_attempts=2)
+        self.flags(scheduler_max_race_attempts=2)
+        sched = fakes.FakeFilterScheduler()
+
+        instance_properties = {'project_id': '12345', 'os_type': 'Linux'}
+        request_spec = dict(instance_properties=instance_properties,
+                            instance_type={})
+
+        retry = dict(num_attempts=1, num_races=0,
+                     was_resource_unavailable=True)
+        filter_properties = dict(retry=retry)
+
+        self.mox.StubOutWithMock(db, 'compute_node_get_all')
+        db.compute_node_get_all(mox.IgnoreArg()).AndReturn([])
+        self.mox.ReplayAll()
+
+        sched._schedule(self.context, request_spec,
+                filter_properties=filter_properties)
+
+        num_attempts = filter_properties['retry']['num_attempts']
+        self.assertEqual(1, num_attempts)
+        num_races = filter_properties['retry']['num_races']
+        self.assertEqual(1, num_races)
+        r_unavailable = filter_properties.get("was_resource_unavailable")
+        self.assertEqual(None, r_unavailable)
+
+    def _test_retry_exceeded_max_attempts(self, retry):
         # Test for necessary explosion when max retries is exceeded and that
         # the information needed in request_spec is still present for error
         # handling
         self.flags(scheduler_max_attempts=2)
+        self.flags(scheduler_max_race_attempts=2)
         sched = fakes.FakeFilterScheduler()
 
         instance_properties = {'project_id': '12345', 'os_type': 'Linux'}
@@ -323,7 +353,6 @@ class FilterSchedulerTestCase(test_scheduler.SchedulerTestCase):
         request_spec = dict(instance_properties=instance_properties,
                             instance_uuids=instance_uuids)
 
-        retry = dict(num_attempts=2)
         filter_properties = dict(retry=retry)
 
         self.assertRaises(exception.NoValidHost, sched.schedule_run_instance,
@@ -334,6 +363,15 @@ class FilterSchedulerTestCase(test_scheduler.SchedulerTestCase):
                           legacy_bdm_in_spec=False)
         uuids = request_spec.get('instance_uuids')
         self.assertEqual(uuids, instance_uuids)
+
+    def test_retry_exceeded_max_attempts(self):
+        retry = dict(num_attempts=2, num_races=0)
+        self._test_retry_exceeded_max_attempts(retry)
+
+    def test_retry_exceeded_max_races(self):
+        retry = dict(num_attempts=0, num_races=2,
+                     was_resource_unavailable=True)
+        self._test_retry_exceeded_max_attempts(retry)
 
     def test_add_retry_host(self):
         retry = dict(num_attempts=1, hosts=[])

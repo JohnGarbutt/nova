@@ -47,7 +47,14 @@ filter_scheduler_opts = [
                     'chosen from. A value of 1 chooses the '
                     'first host returned by the weighing functions. '
                     'This value must be at least 1. Any value less than 1 '
-                    'will be ignored, and 1 will be used instead')
+                    'will be ignored, and 1 will be used instead'),
+    cfg.IntOpt('scheduler_max_attempts',
+               default=3,
+               help="Maximum number of attempts to schedule an instance, "
+                    "excluding failures related to scheduler races."),
+    cfg.IntOpt('scheduler_max_race_attempts',
+               default=10,
+               help="Maximum retries related to scheduler races."),
 ]
 
 CONF.register_opts(filter_scheduler_opts)
@@ -221,6 +228,13 @@ class FilterScheduler(driver.Scheduler):
                 "'scheduler_max_attempts', must be >= 1"))
         return max_attempts
 
+    def _max_race_attempts(self):
+        max_race_attempts = CONF.scheduler_max_race_attempts
+        if max_race_attempts < 1:
+            raise exception.NovaException(_("Invalid value for "
+                "'scheduler_max_race_attempts', must be >= 1"))
+        return max_race_attempts
+
     def _log_compute_error(self, instance_uuid, retry):
         """If the request contained an exception from a previous compute
         build/resize operation, log it to aid debugging
@@ -246,31 +260,48 @@ class FilterScheduler(driver.Scheduler):
         request. If maximum retries is exceeded, raise NoValidHost.
         """
         max_attempts = self._max_attempts()
+        max_race_attempts = self._max_race_attempts()
         force_hosts = filter_properties.get('force_hosts', [])
         force_nodes = filter_properties.get('force_nodes', [])
 
-        if max_attempts == 1 or force_hosts or force_nodes:
+        if (max_attempts == 1 and max_race_attempts == 1) \
+                or force_hosts or force_nodes:
             # re-scheduling is disabled.
             return
 
         retry = filter_properties.pop('retry', {})
-        # retry is enabled, update attempt count:
-        if retry:
-            retry['num_attempts'] += 1
-        else:
+        if not retry:
             retry = {
-                'num_attempts': 1,
+                'num_attempts': 0,
+                'num_races': 0,
                 'hosts': []  # list of compute hosts tried
             }
         filter_properties['retry'] = retry
 
+        was_race = retry.get("was_resource_unavailable", False)
+        if was_race:
+            del retry["was_resource_unavailable"]
+            num_races = retry["num_races"]
+            num_races += 1
+            retry["num_races"] = num_races
+
+            max_num = max_race_attempts
+            num = num_races
+        else:
+            num_attempts = retry['num_attempts']
+            num_attempts += 1
+            retry['num_attempts'] = num_attempts
+
+            max_num = max_attempts
+            num = num_attempts
+
         instance_uuid = instance_properties.get('uuid')
         self._log_compute_error(instance_uuid, retry)
 
-        if retry['num_attempts'] > max_attempts:
+        if num > max_num:
             msg = (_('Exceeded max scheduling attempts %(max_attempts)d for '
                      'instance %(instance_uuid)s')
-                   % {'max_attempts': max_attempts,
+                   % {'max_attempts': max_num,
                       'instance_uuid': instance_uuid})
             raise exception.NoValidHost(reason=msg)
 

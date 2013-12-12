@@ -1171,16 +1171,21 @@ class ComputeManager(manager.Manager):
 
         request_spec['instance_uuids'] = [instance_uuid]
 
+        if exc_info:
+            # stringify to avoid circular ref problem in json serialization:
+            retry['exc'] = traceback.format_exception(*exc_info)
+
+            # tell the scheduler there was an issue getting the resources
+            exception_type = exc_info[0]
+            if exception_type == exception.ComputeResourcesUnavailable:
+                retry['was_resource_unavailable'] = True
+
         LOG.debug(_("Re-scheduling %(method)s: attempt %(num)d") %
                 {'method': scheduler_method.func_name,
                  'num': retry['num_attempts']}, instance_uuid=instance_uuid)
 
         # reset the task state:
         self._instance_update(context, instance_uuid, task_state=task_state)
-
-        if exc_info:
-            # stringify to avoid circular ref problem in json serialization:
-            retry['exc'] = traceback.format_exception(*exc_info)
 
         scheduler_method(context, *method_args)
         return True
