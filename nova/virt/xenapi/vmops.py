@@ -364,8 +364,6 @@ class VMOps(object):
         if name_label is None:
             name_label = instance['name']
 
-        self._ensure_instance_name_unique(name_label)
-        self._ensure_enough_free_mem(instance)
 
         def attach_disks(undo_mgr, vm_ref, vdis, disk_image_type):
             try:
@@ -500,6 +498,9 @@ class VMOps(object):
             # first step is something that completes rather quickly.
             disk_image_type = determine_disk_image_type_step(undo_mgr)
 
+            self._ensure_instance_name_unique(name_label)
+            self._ensure_enough_free_mem(instance)
+
             vdis = create_disks_step(undo_mgr, disk_image_type, image_meta,
                                      name_label)
             kernel_file, ramdisk_file = create_kernel_ramdisk_step(undo_mgr)
@@ -521,9 +522,12 @@ class VMOps(object):
 
             if completed_callback:
                 completed_callback()
-        except Exception:
-            msg = _("Failed to spawn, rolling back")
-            undo_mgr.rollback_and_reraise(msg=msg, instance=instance)
+        except Exception as error:
+            msg = _("Failed to spawn, rolling back due to: %s")
+            LOG.debug(msg, error, exc_info=True)
+            LOG.error(msg, error)
+            undo_mgr._rollback()
+            raise exception.InstanceFaultRollback(error)
 
     def _attach_orig_disk_for_rescue(self, instance, vm_ref):
         orig_vm_ref = vm_utils.lookup(self._session, instance['name'])

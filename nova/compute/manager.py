@@ -3513,26 +3513,45 @@ class ComputeManager(manager.Manager):
         block_device_info = self._get_instance_volume_block_device_info(
                             context, instance, refresh_conn_info=True)
 
-        # NOTE(mriedem): If the original vm_state was STOPPED, we don't
-        # automatically power on the instance after it's migrated
-        power_on = old_vm_state != vm_states.STOPPED
-        self.driver.finish_migration(context, migration, instance,
-                                     disk_info,
-                                     network_info,
-                                     image, resize_instance,
-                                     block_device_info, power_on)
+        perform_revert = False
+        try:
+            # NOTE(mriedem): If the original vm_state was STOPPED, we don't
+            # automatically power on the instance after it's migrated
+            power_on = old_vm_state != vm_states.STOPPED
+            self.driver.finish_migration(context, migration, instance,
+                                         disk_info,
+                                         network_info,
+                                         image, resize_instance,
+                                         block_device_info, power_on)
+        except exception.InstanceFaultRollback as error:
+            LOG.debug(_('Rolling back resize.'),
+                      instance=instance, exc_info=True)
+            # TODO notify and save instance fault?
+            perform_revert = True
 
         migration.status = 'finished'
         migration.save(context.elevated())
 
-        instance.vm_state = vm_states.RESIZED
-        instance.task_state = None
-        instance.launched_at = timeutils.utcnow()
-        instance.save(expected_task_state=task_states.RESIZE_FINISH)
 
-        self._notify_about_instance_usage(
-            context, instance, "finish_resize.end",
-            network_info=network_info)
+        if perform_revert:
+            instance.vm_state = vm_states.RESIZED
+            # TODO(johngarbutt) need new task state RESIZE_FINISH_REVERTING
+            instance.task_state = None
+            instance.launched_at = timeutils.utcnow()
+            instance.save(expected_task_state=task_states.RESIZE_FINISH)
+
+            # TODO - no db access - re quotas
+            self.compute_api.revert_resize(context, instance)
+
+        else:
+            instance.vm_state = vm_states.RESIZED
+            instance.task_state = None
+            instance.launched_at = timeutils.utcnow()
+            instance.save(expected_task_state=task_states.RESIZE_FINISH)
+            
+            self._notify_about_instance_usage(
+                context, instance, "finish_resize.end",
+                network_info=network_info)
 
     @wrap_exception()
     @reverts_task_state
