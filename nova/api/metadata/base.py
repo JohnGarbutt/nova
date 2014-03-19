@@ -101,7 +101,8 @@ class InstanceMetadata():
     """Instance metadata."""
 
     def __init__(self, instance, address=None, content=None, extra_md=None,
-                 conductor_api=None, network_info=None, vd_driver=None):
+                 conductor_api=None, network_info=None, vd_driver=None,
+                 inject_network=None):
         """Creation of this object should basically cover all time consuming
         collection.  Methods after that should not cause time delays due to
         network operations or lengthy cpu operations.
@@ -165,6 +166,9 @@ class InstanceMetadata():
                 ec2utils.get_ip_info_for_instance_from_nw_info(network_info)
 
         self.network_config = None
+
+        if inject_network:
+            network_info.inject_network = inject_network
         cfg = netutils.get_injected_network_template(network_info)
 
         if cfg:

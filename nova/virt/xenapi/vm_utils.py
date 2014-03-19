@@ -1191,7 +1191,8 @@ def generate_iso_blank_root_disk(session, instance, vm_ref, userdevice,
 
 
 def generate_configdrive(session, instance, vm_ref, userdevice,
-                         network_info, admin_password=None, files=None):
+                         network_info, admin_password=None, files=None,
+                         inject_network=False):
     sr_ref = safe_find_sr(session)
     vdi_ref = create_vdi(session, sr_ref, instance, 'config-2',
                          'configdrive', configdrive.CONFIGDRIVESIZE_BYTES)
@@ -1203,8 +1204,10 @@ def generate_configdrive(session, instance, vm_ref, userdevice,
                 extra_md['admin_pass'] = admin_password
             inst_md = instance_metadata.InstanceMetadata(instance,
                     content=files, extra_md=extra_md,
-                    network_info=network_info)
-            with configdrive.ConfigDriveBuilder(instance_md=inst_md) as cdb:
+                    network_info=network_info,
+                    inject_network=inject_network)
+            with configdrive.ConfigDriveBuilder(instance_md=inst_md,
+                    inject_network=inject_network) as cdb:
                 with utils.tempdir() as tmp_path:
                     tmp_file = os.path.join(tmp_path, 'configdrive')
                     cdb.make_drive(tmp_file)

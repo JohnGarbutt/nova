@@ -399,11 +399,9 @@ def find_guest_agent(base_dir):
     return False
 
 
-def should_use_agent(instance):
+def get_user_use_agent_preference(instance):
     sys_meta = utils.instance_sys_meta(instance)
-    if USE_AGENT_SM_KEY not in sys_meta:
-        return CONF.xenserver.use_agent_default
-    else:
+    if USE_AGENT_SM_KEY in sys_meta:
         use_agent_raw = sys_meta[USE_AGENT_SM_KEY]
         try:
             return strutils.bool_from_string(use_agent_raw, strict=True)
@@ -411,7 +409,14 @@ def should_use_agent(instance):
             LOG.warn(_("Invalid 'agent_present' value. "
                        "Falling back to the default."),
                        instance=instance)
-            return CONF.xenserver.use_agent_default
+
+
+def should_use_agent(instance):
+    use_agent = get_user_use_agent_preference(instance)
+    if not use_agent:
+        return CONF.xenserver.use_agent_default
+    else:
+        return use_agent
 
 
 class SimpleDH(object):

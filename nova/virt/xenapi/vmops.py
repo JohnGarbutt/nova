@@ -634,11 +634,18 @@ class VMOps(object):
 
         # Attach (optional) configdrive v2 disk
         if configdrive.required_by(instance):
+            # always inject if users explicitly doesn't want the agent
+            # otherwise, use default behavior
+            inject_network = None
+            user_wants_agent = agent.get_user_use_agent_preference(instance)
+            if user_wants_agent == False:
+                inject_network = True
             vm_utils.generate_configdrive(self._session, instance, vm_ref,
                                           DEVICE_CONFIGDRIVE,
                                           network_info,
                                           admin_password=admin_password,
-                                          files=files)
+                                          files=files,
+                                          inject_network=inject_network)
 
     def _wait_for_instance_to_start(self, instance, vm_ref):
         LOG.debug(_('Waiting for instance state to become running'),
