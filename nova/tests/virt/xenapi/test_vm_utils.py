@@ -22,6 +22,7 @@ import mock
 import mox
 from oslo.config import cfg
 
+from nova.api.metadata import base as instance_metadata
 from nova.compute import flavors
 from nova.compute import power_state
 from nova.compute import vm_mode
@@ -35,6 +36,7 @@ from nova import test
 from nova.tests.virt.xenapi import stubs
 from nova.tests.virt.xenapi import test_xenapi
 from nova import utils
+from nova.virt import configdrive
 from nova.virt.xenapi.client import session as xenapi_session
 from nova.virt.xenapi import driver as xenapi_conn
 from nova.virt.xenapi import fake
@@ -194,6 +196,44 @@ class GenerateConfigDriveTestCase(VMUtilsTestBase):
         # And the actual call we're testing
         vm_utils.generate_configdrive('session', instance, 'vm_ref',
                                       'userdevice', "nw_info")
+
+
+    @mock.patch.object(vm_utils, "create_vbd")
+    @mock.patch.object(configdrive, "ConfigDriveBuilder")
+    @mock.patch.object(instance_metadata, "InstanceMetadata")
+    @mock.patch.object(vm_utils, "vdi_attached_here")
+    @mock.patch.object(vm_utils, "create_vdi")
+    @mock.patch.object(vm_utils, "safe_find_sr")
+    def test_pass_inject_network_flag_to_config_drive_builder(self,
+            mock_safe_find_sr, mock_create_vdi, mock_vdi_attached_here,
+            mock_instance_metadata, mock_config_drive_builder, *args):
+
+        inject_network = True
+        network_info = "network info"
+        instance = "instance"
+        instance_metadata = "instance md"
+        dev = contextified('mounted_dev')
+
+        mock_safe_find_sr.return_value = "sr_ref"
+        mock_create_vdi.return_value = "vdi_ref"
+        mock_vdi_attached_here.return_value = dev
+        mock_instance_metadata.return_value = instance_metadata
+
+        mock_cdb = mock.Mock()
+        mock_cdb.create_drive.return_value = None
+        cdb = contextified(mock_cdb)
+        mock_config_drive_builder.return_value = cdb
+
+        vm_utils.generate_configdrive("session", instance, "vm_ref",
+            "user_device", network_info, inject_network=True)
+
+        mock_instance_metadata.assert_called_with(instance, content=None,
+            extra_md={}, network_info=network_info,
+            inject_network=inject_network)
+        mock_config_drive_builder.assert_called_with(
+            instance_md=instance_metadata)
+        mock_cdb.create_drive.assert_called_with('mounted_dev')
+
 
     @mock.patch.object(vm_utils, "destroy_vdi")
     @mock.patch.object(vm_utils, "vdi_attached_here")

@@ -89,11 +89,8 @@ def get_injected_network_template(network_info, use_ipv6=CONF.use_ipv6,
 
         ifc_num += 1
 
-        inject = inject_network
-        if inject is None:
-            inject = network.get_meta('injected')
-
-        if inject:
+        inject = inject_network or network.get_meta('injected')
+        if not inject:
             continue
 
         address = None

@@ -633,19 +633,25 @@ class VMOps(object):
                                             ephemeral_gb)
 
         # Attach (optional) configdrive v2 disk
+        self._attach_config_drive_if_required(instance, vm_ref, files,
+            admin_password, network_info)
+
+
+    def _attach_config_drive_if_required(self, instance, vm_ref, files,
+            admin_password, network_info):
+
         if configdrive.required_by(instance):
             # always inject if users explicitly doesn't want the agent
             # otherwise, use default behavior
-            inject_network = None
-            user_wants_agent = agent.get_user_use_agent_preference(instance)
-            if user_wants_agent == False:
+            agent_required = xapi_agent.required_by(instance)
+            if agent_required:
+                inject_network = False
+            else:
                 inject_network = True
             vm_utils.generate_configdrive(self._session, instance, vm_ref,
-                                          DEVICE_CONFIGDRIVE,
-                                          network_info,
-                                          admin_password=admin_password,
-                                          files=files,
-                                          inject_network=inject_network)
+                  DEVICE_CONFIGDRIVE, network_info,
+                  admin_password=admin_password, files=files,
+                  inject_network=inject_network)
 
     def _wait_for_instance_to_start(self, instance, vm_ref):
         LOG.debug(_('Waiting for instance state to become running'),

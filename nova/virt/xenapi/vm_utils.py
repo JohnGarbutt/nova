@@ -1190,34 +1190,32 @@ def generate_iso_blank_root_disk(session, instance, vm_ref, userdevice,
                    'user', size_gb * 1024, CONF.default_ephemeral_format)
 
 
-def generate_configdrive(session, instance, vm_ref, userdevice,
-                         network_info, admin_password=None, files=None,
-                         inject_network=False):
+def _create_vdi_for_config_drive(session, instance):
     sr_ref = safe_find_sr(session)
     vdi_ref = create_vdi(session, sr_ref, instance, 'config-2',
                          'configdrive', configdrive.CONFIGDRIVESIZE_BYTES)
+    return vdi_ref
+
+
+def _create_config_drive(instance_md, device_path):
+    with configdrive.ConfigDriveBuilder(instance_md=instance_md) as cdb:
+        cdb.create_drive(device_path)
+
+
+def generate_configdrive(session, instance, vm_ref, userdevice,
+                         network_info, admin_password=None, files=None,
+                         inject_network=False):
+    vdi_ref = _create_vdi_for_config_drive(session, instance)
+    extra_md = {}
+    if admin_password:
+        extra_md['admin_pass'] = admin_password
 
     try:
         with vdi_attached_here(session, vdi_ref, read_only=False) as dev:
-            extra_md = {}
-            if admin_password:
-                extra_md['admin_pass'] = admin_password
             inst_md = instance_metadata.InstanceMetadata(instance,
-                    content=files, extra_md=extra_md,
-                    network_info=network_info,
-                    inject_network=inject_network)
-            with configdrive.ConfigDriveBuilder(instance_md=inst_md,
-                    inject_network=inject_network) as cdb:
-                with utils.tempdir() as tmp_path:
-                    tmp_file = os.path.join(tmp_path, 'configdrive')
-                    cdb.make_drive(tmp_file)
-
-                    dev_path = utils.make_dev_path(dev)
-                    utils.execute('dd',
-                                  'if=%s' % tmp_file,
-                                  'of=%s' % dev_path,
-                                  'oflag=direct,sync',
-                                  run_as_root=True)
+                 content=files, extra_md=extra_md, network_info=network_info,
+                 inject_network=inject_network)
+            _create_config_drive(inst_md, dev)
 
         create_vbd(session, vm_ref, vdi_ref, userdevice, bootable=False,
                    read_only=True)

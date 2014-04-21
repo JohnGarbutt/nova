@@ -82,7 +82,7 @@ xenapi_agent_opts = [
     cfg.BoolOpt('use_agent_default',
                 default=False,
                 deprecated_name='xenapi_use_agent_default',
-                deprecated_group='DEFAULT',
+                deprecated_group='xenserver',
                 help='Determines if the XenAPI agent should be used when '
                      'the image used does not contain a hint to declare if '
                      'the agent is present or not. '
@@ -411,12 +411,11 @@ def get_user_use_agent_preference(instance):
                        instance=instance)
 
 
-def should_use_agent(instance):
+def required_by(instance):
     use_agent = get_user_use_agent_preference(instance)
-    if not use_agent:
-        return CONF.xenserver.use_agent_default
-    else:
+    if use_agent:
         return use_agent
+    return CONF.xenserver.use_agent_default
 
 
 class SimpleDH(object):

@@ -14,6 +14,8 @@
 #    under the License.
 
 
+import contextlib
+import mock
 import mox
 import os
 import tempfile
@@ -87,3 +89,26 @@ class ConfigDriveTestCase(test.NoDBTestCase):
         finally:
             if imagefile:
                 fileutils.delete_if_exists(imagefile)
+
+    @mock.patch.object(configdrive.ConfigDriveBuilder, 'make_drive')
+    @mock.patch.object(utils, 'tempdir')
+    @mock.patch.object(utils, "execute")
+    @mock.patch.object(utils, "make_dev_path")
+    def test_create_drive_at_path(self, mock_make_dev_path, mock_utils_execute,
+                                  mock_utils_tmp_dir, mock_make_drive):
+        device_path = "config/drive/path"
+        mock_make_dev_path.return_value = 'device'
+        mock_utils_tmp_dir.return_value = contextified('tmp/dir/')
+
+        config_drive_builder = configdrive.ConfigDriveBuilder()
+        config_drive_builder.create_drive(device_path)
+
+        mock_make_drive.assert_called_with('tmp/dir/configdrive')
+        mock_make_dev_path.assert_called_with(device_path)
+        mock_utils_execute.assert_called_with('dd', 'if=tmp/dir/configdrive',
+            'of=device', 'oflag=direct,sync', run_as_root=True)
+
+
+@contextlib.contextmanager
+def contextified(result):
+    yield result

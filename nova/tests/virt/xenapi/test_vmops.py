@@ -137,6 +137,73 @@ class VMOpsTestCase(VMOpsTestBase):
                 self._vmops._get_vm_opaque_ref, instance)
 
 
+class CreateConfigDriveTestCase(VMOpsTestCase):
+    def setUp(self):
+        super(VMOpsTestCase, self).setUp()
+        self.vm_ref = "vm_ref"
+        self.files = "files"
+        self.admin_password = "admin123"
+        self.network_info = "network_info"
+
+    @mock.patch.object(xenapi_agent, 'required_by')
+    @mock.patch.object(vm_utils, 'generate_configdrive')
+    def test_config_drive_without_injected_network_by_default(self,
+            mock_generate_config_drive, mock_agent_needed):
+        instance = {"config_drive": True}
+        mock_agent_needed.required_by.return_value = None
+
+        self._vmops._attach_config_drive_if_required(instance, self.vm_ref,
+            self.files, self.admin_password, self.network_info)
+
+        mock_agent_needed.assert_called_with(instance)
+        mock_generate_config_drive.assert_was_called_with(mock.ANY,
+            instance, self.vm_ref, '3', self.network_info,
+            admin_password=self.admin_password, files=self.files,
+            inject_network=None)
+
+    @mock.patch.object(vm_utils, 'generate_configdrive')
+    def test_config_drive_not_attached_when_not_required_by_instance(self,
+            mock_generate_config_drive):
+        instance = {"config_drive": False}
+
+        self._vmops._attach_config_drive_if_required(instance, self.vm_ref,
+            self.files, self.admin_password, self.network_info)
+
+        assert not mock_generate_config_drive.called
+
+    @mock.patch.object(xenapi_agent, 'required_by')
+    @mock.patch.object(vm_utils, 'generate_configdrive')
+    def test_config_drive_with_injected_nw_when_agent_is_not_used(self,
+            mock_generate_config_drive, mock_agent_needed):
+        instance = {"config_drive": True}
+        mock_agent_needed.required_by.return_value = False
+
+        self._vmops._attach_config_drive_if_required(instance, self.vm_ref,
+            self.files, self.admin_password, self.network_info)
+
+        mock_agent_needed.assert_called_with(instance)
+        mock_generate_config_drive.assert_was_called_with(mock.ANY,
+            instance, self.vm_ref, '3', self.network_info,
+            admin_password=self.admin_password, files=self.files,
+            inject_network=True)
+
+    @mock.patch.object(xenapi_agent, 'required_by')
+    @mock.patch.object(vm_utils, 'generate_configdrive')
+    def test_config_drive_without_injected_network_when_agent_is_used(self,
+            mock_generate_config_drive, mock_agent_needed):
+        instance = {"config_drive": True}
+        mock_agent_needed.required_by.return_value = True
+
+        self._vmops._attach_config_drive_if_required(instance, self.vm_ref,
+            self.files, self.admin_password, self.network_info)
+
+        mock_agent_needed.assert_called_with(instance)
+        mock_generate_config_drive.assert_was_called_with(mock.ANY,
+            instance, self.vm_ref, '3', self.network_info,
+            admin_password=self.admin_password, files=self.files,
+            inject_network=False)
+
+
 class InjectAutoDiskConfigTestCase(VMOpsTestBase):
     def setUp(self):
         super(InjectAutoDiskConfigTestCase, self).setUp()
