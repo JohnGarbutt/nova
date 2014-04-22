@@ -170,7 +170,7 @@ class InstanceMetadata():
         if inject_network:
             network_info.inject_network = inject_network
         cfg = netutils.get_injected_network_template(network_info,
-                                                     inject_network)
+            inject_network=inject_network)
 
         if cfg:
             key = "%04i" % len(self.content)
