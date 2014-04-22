@@ -392,19 +392,19 @@ class XenAPIBasedAgent(AgentTestCaseBase):
         system_md = {"image_xenapi_use_agent": "True"}
         instance = {"system_metadata": system_md}
 
-        self.assertTrue(agent.required_by(instance))
+        self.assertTrue(agent.should_use_agent(instance))
 
     def test_agent_not_required_by_instance(self):
         system_md = {"image_xenapi_use_agent": "False"}
         instance = {"system_metadata": system_md}
 
-        self.assertFalse(agent.required_by(instance))
+        self.assertFalse(agent.should_use_agent(instance))
 
     def test_agent_not_required_by_instance_when_not_in_metadata(self):
         instance = {"system_metadata": {}}
-        self.assertFalse(agent.required_by(instance))
+        self.assertFalse(agent.should_use_agent(instance))
 
     def test_agent_not_required_by_instance_when_not_in_metadata(self):
         instance = {"system_metadata": {}}
         self.flags(use_agent_default=True, group='xenserver')
-        self.assertTrue(agent.required_by(instance))
+        self.assertTrue(agent.should_use_agent(instance))

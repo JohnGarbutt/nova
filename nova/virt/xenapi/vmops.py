@@ -643,7 +643,7 @@ class VMOps(object):
         if configdrive.required_by(instance):
             # always inject if users explicitly doesn't want the agent
             # otherwise, use default behavior
-            agent_required = xapi_agent.required_by(instance)
+            agent_required = xapi_agent.should_use_agent(instance)
             if agent_required:
                 inject_network = False
             else:

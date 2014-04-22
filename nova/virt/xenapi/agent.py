@@ -411,7 +411,7 @@ def get_user_use_agent_preference(instance):
                        instance=instance)
 
 
-def required_by(instance):
+def should_use_agent(instance):
     use_agent = get_user_use_agent_preference(instance)
     if use_agent:
         return use_agent
