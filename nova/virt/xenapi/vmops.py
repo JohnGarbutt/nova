@@ -643,11 +643,12 @@ class VMOps(object):
         if configdrive.required_by(instance):
             # always inject if users explicitly doesn't want the agent
             # otherwise, use default behavior
-            agent_required = xapi_agent.should_use_agent(instance)
-            if agent_required:
-                inject_network = False
-            else:
-                inject_network = True
+            # agent_required = xapi_agent.should_use_agent(instance)
+            inject_network = True
+            # if agent_required:
+            #     inject_network = False
+            # else:
+            #     inject_network = True
             vm_utils.generate_configdrive(self._session, instance, vm_ref,
                   DEVICE_CONFIGDRIVE, network_info,
                   admin_password=admin_password, files=files,
@@ -663,6 +664,7 @@ class VMOps(object):
                 break
             greenthread.sleep(0.5)
 
+
     def _configure_new_instance_with_agent(self, instance, vm_ref,
                                            injected_files, admin_password):
         if not self.agent_enabled(instance):
@@ -671,26 +673,7 @@ class VMOps(object):
 
         agent = self._get_agent(instance, vm_ref)
 
-        version = agent.get_version()
-        if not version:
-            LOG.debug(_("Skip agent setup, unable to contact agent."),
-                      instance=instance)
-            return
-
-        LOG.debug(_('Detected agent version: %s'), version, instance=instance)
-
-        # NOTE(johngarbutt) the agent object allows all of
-        # the following steps to silently fail
-        agent.inject_ssh_key()
-
-        if injected_files:
-            agent.inject_files(injected_files)
-
-        if admin_password:
-            agent.set_admin_password(admin_password)
-
-        agent.resetnetwork()
-        agent.update_if_needed(version)
+        agent.configure_agent(admin_password, injected_files)
 
     def _prepare_instance_filter(self, instance, network_info):
         try:
