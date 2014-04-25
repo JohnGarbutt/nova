@@ -175,6 +175,18 @@ class ConfigDriveBuilder(object):
         except OSError as e:
             LOG.error(_('Could not remove tmpdir: %s'), str(e))
 
+    def create_drive(self, device_path):
+        with utils.tempdir() as tmp_path:
+            tmp_file = os.path.join(tmp_path, 'configdrive')
+            self.make_drive(tmp_file)
+
+            dev_path = utils.make_dev_path(device_path)
+            utils.execute('dd',
+                          'if=%s' % tmp_file,
+                          'of=%s' % dev_path,
+                          'oflag=direct,sync',
+                          run_as_root=True)
+
 
 def required_by(instance):
     return instance.get('config_drive') or CONF.force_config_drive
