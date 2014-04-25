@@ -377,7 +377,8 @@ class XenAPIBasedAgent(object):
                       instance=self.instance)
             return
 
-        LOG.debug(_('Detected agent version: %s'), version, instance=instance)
+        LOG.debug(_('Detected agent version: %s'), version,
+                  instance=self.instance)
 
         # NOTE(johngarbutt) the agent object allows all of
         # the following steps to silently fail
