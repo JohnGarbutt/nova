@@ -375,7 +375,7 @@ class XenAPIBasedAgent(object):
         if not version:
             LOG.debug(_("Skip agent setup, unable to contact agent."),
                       instance=self.instance)
-        return
+            return
 
         LOG.debug(_('Detected agent version: %s'), version, instance=instance)
 
