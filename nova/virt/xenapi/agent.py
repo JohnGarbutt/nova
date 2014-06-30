@@ -333,10 +333,22 @@ class XenAPIBasedAgent(object):
     def resetnetwork(self):
         LOG.debug('Resetting network', instance=self.instance)
 
-        #NOTE(johngarbutt) old FreeBSD and Gentoo agents return 500 on success
-        return self._call_agent('resetnetwork',
-                            timeout=CONF.xenserver.agent_resetnetwork_timeout,
-                            success_codes=['0', '500'])
+        expiration = time.time() + CONF.xenserver.agent_resetnetwork_timeout
+        while True:
+            try:
+                # NOTE(johngarbutt): we can't use the xapi plugin
+                # timeout, because the domid may change when
+                # the server is rebooted during a windows host name change.
+                # When the domid changes we get a premature timeout error,
+                # so we should retry if the errors is within the timeout
+                # window.
+                return self._call_agent('resetnetwork',
+                        success_codes=['0', '500'], ignore_errors=False,
+                        timeout=CONF.xenserver.agent_resetnetwork_timeout)
+            except exception.AgentError as error:
+                if time.time() > expiration:
+                    self._add_instance_fault(error, sys.exc_info())
+                    return
 
     def _skip_ssh_key_inject(self):
         return self._get_sys_meta_key(SKIP_SSH_SM_KEY)

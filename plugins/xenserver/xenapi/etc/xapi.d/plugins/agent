@@ -218,6 +218,17 @@ def _wait_for_agent(self, request_id, arg_dict, timeout):
             # The agent responded
             return ret
 
+        exists_args = {
+            "dom_id": arg_dict["dom_id"]
+            "path": "",
+        }
+        if not xenstore._record_exists(exists_args):
+            # NOTE(johngarbutt) If we can't find this domid
+            # the VM has probably been rebooted.
+            # We can trigger sending of a fresh domid
+            # by calling this a timeout.
+            break
+
         time.sleep(.5)
 
     # No response within the timeout period; bail out
