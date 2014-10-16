@@ -30,7 +30,6 @@ import signal
 import subprocess
 import tempfile
 
-import XenAPIPlugin
 
 LOG = logging.getLogger(__name__)
 CHUNK_SIZE = 8192
@@ -479,6 +478,8 @@ def register_plugin_calls(*funcs):
     """Wrapper around XenAPIPlugin.dispatch which handles pickle
     serialization.
     """
+    # NOTE(johnthetubaguy) import here as not available for unit tests
+    import XenAPIPlugin
     wrapped_dict = {}
     for func in funcs:
         wrapped_dict[func.__name__] = _handle_serialization(func)
