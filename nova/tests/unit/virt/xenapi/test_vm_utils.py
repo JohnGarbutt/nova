@@ -470,6 +470,85 @@ class TestImageCompression(VMUtilsTestBase):
         self.assertEqual(vm_utils.get_compression_level(), 6)
 
 
+class ImageCacheUtilsTestCase(VMUtilsTestBase):
+    @mock.patch.object(vm_utils, "_find_cached_images")
+    @mock.patch.object(vm_utils, "safe_find_sr")
+    def test_find_all_cached_images(self, mock_sr, mock_find):
+        mock_sr.return_value = "sr_ref"
+        mock_find.return_value = "result"
+
+        result = vm_utils.find_all_cached_images("session")
+
+        self.assertEqual("result", result)
+        mock_find.assert_called_once_with("session", "sr_ref", return_rec=True)
+
+    @mock.patch.object(vm_utils, "destroy_vdi")
+    def test_try_delete_cached_image_success(self, mock_destroy):
+        result = vm_utils.try_delete_cached_image("session", "uuid", "ref")
+        self.assertTrue(result)
+
+    @mock.patch.object(vm_utils, "destroy_vdi")
+    def test_try_delete_cached_image_error(self, mock_destroy):
+        mock_destroy.side_effect = exception.StorageError(reason="asdf")
+        result = vm_utils.try_delete_cached_image("session", "uuid", "ref")
+        self.assertFalse(result)
+
+    @mock.patch.object(vm_utils, "_get_all_vdis_in_sr")
+    def test_find_cached_images_default(self, mock_all):
+        mock_all.return_value = [
+            ("ref1", {"other_config": {"image-id": "1"}}),
+            ("ref2", {"other_config": {"image-id": "2"}}),
+            ("ref3", {"other_config": {}})]
+
+        result = vm_utils._find_cached_images("session", "sr")
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result["1"], "ref1")
+        self.assertEqual(result["2"], "ref2")
+
+        mock_all.assert_called_once_with("session", "sr")
+
+    @mock.patch.object(vm_utils, "_get_all_vdis_in_sr")
+    def test_find_cached_images_with_rec(self, mock_all):
+        mock_rec = {"other_config": {"image-id": "1"}}
+        mock_all.return_value = [
+            ("ref1", mock_rec),
+            ("ref2", {}),
+            ("ref3", {"other_config": {}})]
+
+        result = vm_utils._find_cached_images("session", "sr", True)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result["1"]), 2)
+        self.assertEqual(result["1"]["ref"], "ref1")
+        self.assertEqual(result["1"]["rec"], mock_rec)
+
+        mock_all.assert_called_once_with("session", "sr")
+
+    def test_set_cached_vdi_expiry(self):
+        session = mock.Mock()
+        vm_utils.set_cached_vdi_expiry(session, "ref", "exp")
+        session.VDI.add_to_other_config.assert_called_once_with(
+                "ref", "cache-expiry", "exp")
+
+    def test_try_clear_cached_vdi_expiry_works(self):
+        session = mock.Mock()
+        vm_utils.try_clear_cached_vdi_expiry(session, "ref")
+        session.VDI.remove_from_other_config.assert_called_once_with(
+                "ref", "cache-expiry")
+
+    def test_try_clear_cached_vdi_expiry_ignores_error(self):
+        session = mock.Mock()
+        session.XenAPI.Failure = test.TestingException
+        error = test.TestingException()
+        session.VDI.remove_from_other_config.side_effect = error
+
+        vm_utils.try_clear_cached_vdi_expiry(session, "ref")
+
+        session.VDI.remove_from_other_config.assert_called_once_with(
+                "ref", "cache-expiry")
+
+
 class ResizeHelpersTestCase(VMUtilsTestBase):
     def test_repair_filesystem(self):
         self.mox.StubOutWithMock(utils, 'execute')

@@ -821,20 +821,60 @@ def destroy_cached_images(session, sr_ref, all_cached=False, dry_run=False):
     return destroyed
 
 
-def _find_cached_images(session, sr_ref):
+@utils.synchronized('xenapi-image-cache')
+def _find_cached_images(session, sr_ref, return_rec=False):
     """Return a dict(uuid=vdi_ref) representing all cached images."""
+    LOG.debug("Finding all cached images.")
     cached_images = {}
+    # TODO(johngarbutt) ideally remove this expensive call
     for vdi_ref, vdi_rec in _get_all_vdis_in_sr(session, sr_ref):
         try:
             image_id = vdi_rec['other_config']['image-id']
         except KeyError:
             continue
 
-        cached_images[image_id] = vdi_ref
+        if return_rec:
+            cached_images[image_id] = {
+                "ref": vdi_ref,
+                "rec": vdi_rec
+            }
+        else:
+            cached_images[image_id] = vdi_ref
 
     return cached_images
 
 
+def find_all_cached_images(session):
+    sr_ref = safe_find_sr(session)
+    return _find_cached_images(session, sr_ref, return_rec=True)
+
+
+@utils.synchronized('xenapi-image-cache')
+def set_cached_vdi_expiry(session, vdi_ref, expiry):
+    session.VDI.add_to_other_config(vdi_ref, 'cache-expiry', expiry)
+
+
+@utils.synchronized('xenapi-image-cache')
+def try_clear_cached_vdi_expiry(session, vdi_ref):
+    try:
+        session.VDI.remove_from_other_config(vdi_ref, 'cache-expiry')
+    except session.XenAPI.Failure:
+        LOG.debug("Error while removing sm_config", exc_info=True)
+
+
+@utils.synchronized('xenapi-image-cache')
+def try_delete_cached_image(session, image_uuid, vdi_ref):
+    LOG.debug("Trying to delete image: %s", image_uuid)
+    try:
+        destroy_vdi(session, vdi_ref)
+        LOG.debug("Deleted image: %s", image_uuid)
+        return True
+    except exception.StorageError:
+        LOG.warning(_LW("Failed to delete cached image: %s"), image_uuid)
+        return False
+
+
+@utils.synchronized('xenapi-image-cache')
 def _find_cached_image(session, image_id, sr_ref):
     """Returns the vdi-ref of the cached image."""
     name_label = _get_image_vdi_label(image_id)
@@ -1238,7 +1278,7 @@ def _create_cached_image(context, session, instance, name_label,
                         "of type ext. SR on this system was found to be of "
                         "type %s. Ignoring the cow flag."), sr_type)
 
-    @utils.synchronized('xenapi-image-cache' + image_id)
+    @utils.synchronized('xenapi-image-cache-' + image_id)
     def _create_cached_image_impl(context, session, instance, name_label,
                                   image_id, image_type, sr_ref):
         cache_vdi_ref = _find_cached_image(session, image_id, sr_ref)
@@ -1247,32 +1287,38 @@ def _create_cached_image(context, session, instance, name_label,
             downloaded = True
             vdis = _fetch_image(context, session, instance, name_label,
                                 image_id, image_type)
-
             cache_vdi_ref = session.call_xenapi(
                     'VDI.get_by_uuid', vdis['root']['uuid'])
 
-            session.call_xenapi('VDI.set_name_label', cache_vdi_ref,
-                                _get_image_vdi_label(image_id))
-            session.call_xenapi('VDI.set_name_description', cache_vdi_ref,
-                                'root')
-            session.call_xenapi('VDI.add_to_other_config',
-                                cache_vdi_ref, 'image-id', str(image_id))
+            @utils.synchronized('xenapi-image-cache')
+            def _turn_download_into_cached_image_impl():
+                session.call_xenapi('VDI.set_name_label', cache_vdi_ref,
+                                    _get_image_vdi_label(image_id))
+                session.call_xenapi('VDI.set_name_description', cache_vdi_ref,
+                                    'root')
+                session.call_xenapi('VDI.add_to_other_config',
+                                    cache_vdi_ref, 'image-id', str(image_id))
 
-        if CONF.use_cow_images:
-            new_vdi_ref = _clone_vdi(session, cache_vdi_ref)
-        elif sr_type == 'ext':
-            new_vdi_ref = _safe_copy_vdi(session, sr_ref, instance,
-                                         cache_vdi_ref)
-        else:
-            new_vdi_ref = session.call_xenapi("VDI.copy", cache_vdi_ref,
-                                              sr_ref)
+            _turn_download_into_cached_image_impl()
 
-        session.call_xenapi('VDI.set_name_label', new_vdi_ref, '')
-        session.call_xenapi('VDI.set_name_description', new_vdi_ref, '')
-        session.call_xenapi('VDI.remove_from_other_config',
-                            new_vdi_ref, 'image-id')
+        @utils.synchronized('xenapi-image-cache')
+        def _create_vdi_from_cached_image_impl():
+            if CONF.use_cow_images:
+                new_vdi_ref = _clone_vdi(session, cache_vdi_ref)
+            elif sr_type == 'ext':
+                new_vdi_ref = _safe_copy_vdi(session, sr_ref, instance,
+                                             cache_vdi_ref)
+            else:
+                new_vdi_ref = session.call_xenapi("VDI.copy", cache_vdi_ref,
+                                                  sr_ref)
 
-        vdi_uuid = session.call_xenapi('VDI.get_uuid', new_vdi_ref)
+            session.call_xenapi('VDI.set_name_label', new_vdi_ref, '')
+            session.call_xenapi('VDI.set_name_description', new_vdi_ref, '')
+            session.call_xenapi('VDI.remove_from_other_config',
+                                new_vdi_ref, 'image-id')
+            return session.call_xenapi('VDI.get_uuid', new_vdi_ref)
+
+        vdi_uuid = _create_vdi_from_cached_image_impl()
         return downloaded, vdi_uuid
 
     downloaded, vdi_uuid = _create_cached_image_impl(context, session,

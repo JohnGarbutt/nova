@@ -29,6 +29,7 @@ from nova.virt import fake
 from nova.virt.xenapi import agent as xenapi_agent
 from nova.virt.xenapi.client import session as xenapi_session
 from nova.virt.xenapi import fake as xenapi_fake
+from nova.virt.xenapi import imagecache
 from nova.virt.xenapi import vm_utils
 from nova.virt.xenapi import vmops
 from nova.virt.xenapi import volume_utils
@@ -196,6 +197,16 @@ class InjectAutoDiskConfigTestCase(VMOpsTestBase):
         self.vmops._inject_auto_disk_config(instance, vm_ref)
         xenstore_data = vm['xenstore_data']
         self.assertEqual(xenstore_data['vm-data/auto-disk-config'], 'False')
+
+
+class ImageCacheVmopsTestCase(VMOpsTestBase):
+    def test_vmops_has_image_cache(self):
+        self.assertNotEqual(None, self.vmops.image_cache)
+
+    @mock.patch.object(imagecache.ImageCacheManager, "update")
+    def test_manage_image_cache(self, mock_update):
+        self.vmops.manage_image_cache("context", "all_instances")
+        mock_update.assert_called_once_with("context", "all_instances")
 
 
 class GetConsoleOutputTestCase(VMOpsTestBase):

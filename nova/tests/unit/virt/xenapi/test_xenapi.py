@@ -4002,6 +4002,25 @@ class XenAPIInjectMetadataTestCase(stubs.XenAPITestBaseNoDB):
         self.assertTrue(self.called_fake_get_vm_opaque_ref)
 
 
+class XapiDriverImageCacheTestCase(stubs.XenAPITestBaseNoDB):
+    def setUp(self):
+        super(XapiDriverImageCacheTestCase, self).setUp()
+        self.flags(connection_url='test_url',
+                   connection_password='test_pass',
+                   group='xenserver')
+        stubs.stubout_session(self.stubs, stubs.FakeSessionForVMTests)
+        self.conn = xenapi_conn.XenAPIDriver(fake.FakeVirtAPI(), False)
+
+    def test_driver_capabilities(self):
+        self.assertEqual(True, self.conn.capabilities["has_imagecache"])
+        self.assertEqual(False, self.conn.capabilities["supports_recreate"])
+
+    @mock.patch.object(vmops.VMOps, "manage_image_cache")
+    def test_manage_image_cache(self, mock_manage):
+        self.conn.manage_image_cache("ctxt", "all_instances")
+        mock_manage.assert_called_once_with("ctxt", "all_instances")
+
+
 class XenAPISessionTestCase(test.NoDBTestCase):
     def _get_mock_xapisession(self, software_version):
         class MockXapiSession(xenapi_session.XenAPISession):

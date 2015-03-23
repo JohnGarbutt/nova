@@ -104,6 +104,11 @@ OVERHEAD_PER_VCPU = 1.5
 class XenAPIDriver(driver.ComputeDriver):
     """A connection to XenServer or Xen Cloud Platform."""
 
+    capabilities = {
+        "has_imagecache": True,
+        "supports_recreate": False,
+        }
+
     def __init__(self, virtapi, read_only=False):
         super(XenAPIDriver, self).__init__(virtapi)
 
@@ -151,6 +156,10 @@ class XenAPIDriver(driver.ComputeDriver):
         efficiency.
         """
         return self._vmops.instance_exists(instance.name)
+
+    def manage_image_cache(self, context, all_instances):
+        """Manage the local cache of images."""
+        self._vmops.manage_image_cache(context, all_instances)
 
     def estimate_instance_overhead(self, instance_info):
         """Get virtualization overhead required to build an instance of the

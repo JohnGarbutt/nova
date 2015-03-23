@@ -51,6 +51,7 @@ from nova.virt import configdrive
 from nova.virt import driver as virt_driver
 from nova.virt import firewall
 from nova.virt.xenapi import agent as xapi_agent
+from nova.virt.xenapi import imagecache
 from nova.virt.xenapi import pool_states
 from nova.virt.xenapi import vm_utils
 from nova.virt.xenapi import volume_utils
@@ -160,6 +161,7 @@ class VMOps(object):
         vif_impl = importutils.import_class(CONF.xenserver.vif_driver)
         self.vif_driver = vif_impl(xenapi_session=self._session)
         self.default_root_dev = '/dev/sda'
+        self.image_cache = imagecache.ImageCacheManager(self._session)
 
         LOG.debug("Importing image upload handler: %s",
                   CONF.xenserver.image_upload_handler)
@@ -180,6 +182,9 @@ class VMOps(object):
 
     def instance_exists(self, name_label):
         return vm_utils.lookup(self._session, name_label) is not None
+
+    def manage_image_cache(self, context, all_instances):
+        self.image_cache.update(context, all_instances)
 
     def list_instances(self):
         """List VM instances."""
