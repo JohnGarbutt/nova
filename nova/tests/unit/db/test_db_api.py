@@ -3462,7 +3462,8 @@ class BaseInstanceTypeTestCase(test.TestCase, ModelsObjectComparatorMixin):
     def setUp(self):
         super(BaseInstanceTypeTestCase, self).setUp()
         self.ctxt = context.get_admin_context()
-        self.user_ctxt = context.RequestContext('user', 'user')
+        roles = ["fake_role1", "fake_role2"]
+        self.user_ctxt = context.RequestContext('user', 'user', roles=roles)
 
     def _get_base_values(self):
         return {
@@ -4145,6 +4146,26 @@ class InstanceTypeTestCase(BaseInstanceTypeTestCase):
                 self.user_ctxt.project_id)
         flavor_by_name = db.flavor_get_by_name(self.user_ctxt, flavor['name'])
         self._assertEqualObjects(flavor, flavor_by_name)
+
+    def test_flavor_get_by_name_non_public_role_access(self):
+        flavor = self._create_flavor({'name': 'abc', 'flavorid': '123',
+                                      'is_public': False})
+
+        # Admin can see it
+        flavor_by_name = db.flavor_get_by_name(self.ctxt, flavor['name'])
+        self._assertEqualObjects(flavor, flavor_by_name)
+
+        # Regular user can not
+        self.assertRaises(exception.FlavorNotFoundByName,
+                db.flavor_get_by_name, self.user_ctxt,
+                flavor['name'])
+
+        # Regular user can see it after being granted access
+        db.flavor_access_add(self.ctxt, flavor['flavorid'],
+                self.user_ctxt.roles[0])
+        flavor_by_name = db.flavor_get_by_name(self.user_ctxt, flavor['name'])
+        self._assertEqualObjects(flavor, flavor_by_name)
+
 
     def test_flavor_get_by_flavor_id(self):
         flavors = [{'name': 'abc', 'flavorid': '123'},

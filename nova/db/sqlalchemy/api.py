@@ -4737,6 +4737,14 @@ def _dict_with_extra_specs(inst_type_query):
     return inst_type_dict
 
 
+def _add_flavor_roles(context, the_filter):
+    roles = []
+    for role in context.roles:
+        query = models.InstanceTypes.projects.any(project_id=role, deleted=0)
+        roles.append(query)
+    the_filter.extend(roles)
+
+
 def _flavor_get_query(context, session=None, read_deleted=None):
     query = model_query(context, models.InstanceTypes, session=session,
                        read_deleted=read_deleted).\
@@ -4746,6 +4754,7 @@ def _flavor_get_query(context, session=None, read_deleted=None):
         the_filter.extend([
             models.InstanceTypes.projects.any(project_id=context.project_id)
         ])
+        _add_flavor_roles(context, the_filter)
         query = query.filter(or_(*the_filter))
     return query
 
@@ -4785,6 +4794,7 @@ def flavor_get_all(context, inactive=False, filters=None,
                 models.InstanceTypes.projects.any(
                     project_id=context.project_id, deleted=0)
             ])
+            _add_flavor_roles(context, the_filter)
         if len(the_filter) > 1:
             query = query.filter(or_(*the_filter))
         else:
