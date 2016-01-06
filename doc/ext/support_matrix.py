@@ -362,7 +362,15 @@ class SupportMatrixDirective(rst.Directive):
             target = matrix.targets[key]
             implcol = nodes.entry()
             header.append(implcol)
-            implcol.append(nodes.strong(text=target.title))
+            if target.link:
+                uri = target.link
+                target_ref = nodes.reference("", refuri=uri)
+                target_txt = nodes.inline()
+                implcol.append(target_txt)
+                target_txt.append(target_ref)
+                target_ref.append(nodes.strong(text=target.title))
+            else:
+                implcol.append(nodes.strong(text=target.title))
 
         # We now produce the body of the table, one row for
         # each feature to report on
