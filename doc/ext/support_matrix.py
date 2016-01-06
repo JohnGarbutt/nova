@@ -512,20 +512,20 @@ class SupportMatrixDirective(rst.Directive):
             para_info.append(nodes.strong(text="feature info:"))
             info_list = nodes.bullet_list()
 
-            subitem_status = nodes.list_item()
-            subitem_status += [
-                nodes.strong(text="Status: "),
-                nodes.literal(text=status),
-            ]
-            info_list.append(subitem_status)
-
+            self._append_info_list_item(info_list, "Status", status)
             if feature.maturity:
-                subitem_maturity = nodes.list_item()
-                subitem_maturity += [
-                    nodes.strong(text="Maturity: "),
-                    nodes.literal(text=feature.maturity),
-                ]
-                info_list.append(subitem_maturity)
+                self._append_info_list_item(info_list,
+                        "Maturity", feature.maturity)
+            if feature.api_doc_link:
+                self._append_info_list_item(info_list,
+                        "API Docs", feature.api_doc_link)
+            if feature.admin_doc_link:
+                self._append_info_list_item(info_list,
+                        "Admin Docs", feature.api_doc_link)
+            if feature.tempest_test_uuids:
+                for uuid in feature.tempest_test_uuids.split(";"):
+                    self._append_info_list_item(info_list,
+                            "Tempest tests", uuid)
 
             para_info.append(info_list)
             item.append(para_info)
@@ -557,6 +557,14 @@ class SupportMatrixDirective(rst.Directive):
             para_divers.append(impls)
             item.append(para_divers)
             details.append(item)
+
+    def _append_info_list_item(self, info_list, title, text):
+        subitem = nodes.list_item()
+        subitem += [
+            nodes.strong(text="%s: " % title),
+            nodes.literal(text=text),
+        ]
+        info_list.append(subitem)
 
     def _build_notes(self, content):
         """Constructs a list of notes content for the support matrix.
