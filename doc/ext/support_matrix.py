@@ -66,7 +66,9 @@ class SupportMatrixFeature(object):
                     MATURITY_COMPLETE, MATURITY_DEPRECATED]
 
     def __init__(self, key, title, status=STATUS_OPTIONAL,
-                 group=None, notes=None, cli=[], maturity=None):
+                 group=None, notes=None, cli=[], maturity=None,
+                 api_doc_link=None, admin_doc_link=None,
+                 tempest_test_uuids=[]):
         # A unique key (eg 'foo.bar.wizz') to identify the feature
         self.key = key
         # A human friendly short title for the feature
@@ -86,6 +88,12 @@ class SupportMatrixFeature(object):
         self.cli = cli
         # One of the maturity constants
         self.maturity = maturity
+        # Link to API docs
+        self.api_doc_link = api_doc_link
+        # Link to Admin docs
+        self.admin_doc_link = admin_doc_link
+        # List of tempest test uuids
+        self.tempest_test_uuids = tempest_test_uuids
 
 
 class SupportMatrixImplementation(object):
@@ -281,13 +289,26 @@ class SupportMatrixDirective(rst.Directive):
             cli = []
             if cfg.has_option(section, "cli"):
                 cli = cfg.get(section, "cli")
+            api_doc_link = None
+            if cfg.has_option(section, "api_doc_link"):
+                api_doc_link = cfg.get(section, "api_doc_link")
+            admin_doc_link = None
+            if cfg.has_option(section, "admin_doc_link"):
+                admin_doc_link = cfg.get(section, "admin_doc_link")
+            tempest_test_uuids = []
+            if cfg.has_option(section, "tempest_test_uuids"):
+                tempest_test_uuids = cfg.get(section, "tempest_test_uuids")
+
             feature = SupportMatrixFeature(section,
                                            title,
                                            status,
                                            group,
                                            notes,
                                            cli,
-                                           maturity)
+                                           maturity,
+                                           api_doc_link,
+                                           admin_doc_link,
+                                           tempest_test_uuids)
 
             # Now we've got the basic feature details, we must process
             # the hypervisor driver implementation for each feature
