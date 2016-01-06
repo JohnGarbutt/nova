@@ -57,8 +57,16 @@ class SupportMatrixFeature(object):
     STATUS_ALL = [STATUS_MANDATORY, STATUS_CHOICE,
                   STATUS_CONDITION, STATUS_OPTIONAL]
 
+    MATURITY_INCOMPLETE = "incomplete"
+    MATURITY_EXPERIMENTAL = "experimental"
+    MATURITY_COMPLETE = "complete"
+    MATURITY_DEPRECATED = "deprecated"
+
+    MATURITY_ALL = [MATURITY_INCOMPLETE, MATURITY_EXPERIMENTAL,
+                    MATURITY_COMPLETE, MATURITY_DEPRECATED]
+
     def __init__(self, key, title, status=STATUS_OPTIONAL,
-                 group=None, notes=None, cli=[]):
+                 group=None, notes=None, cli=[], maturity=None):
         # A unique key (eg 'foo.bar.wizz') to identify the feature
         self.key = key
         # A human friendly short title for the feature
@@ -76,6 +84,8 @@ class SupportMatrixFeature(object):
         self.implementations = {}
         # A list of CLI commands which are related to that feature
         self.cli = cli
+        # One of the maturity constants
+        self.maturity = maturity
 
 
 class SupportMatrixImplementation(object):
@@ -255,6 +265,16 @@ class SupportMatrixDirective(rst.Directive):
                         (status, section,
                          ",".join(SupportMatrixFeature.STATUS_ALL)))
 
+            maturity = None
+            if cfg.has_option(section, "maturity"):
+                maturity = cfg.get(section, "maturity").lower()
+                if maturity not in SupportMatrixFeature.MATURITY_ALL:
+                    raise Exception(
+                        "'maturity' field value '%s' in ['%s']"
+                        "section must be %s" %
+                        (status, section,
+                         ",".join(SupportMatrixFeature.MATURITY_ALL)))
+
             notes = None
             if cfg.has_option(section, "notes"):
                 notes = cfg.get(section, "notes")
@@ -266,7 +286,8 @@ class SupportMatrixDirective(rst.Directive):
                                            status,
                                            group,
                                            notes,
-                                           cli)
+                                           cli,
+                                           maturity)
 
             # Now we've got the basic feature details, we must process
             # the hypervisor driver implementation for each feature
@@ -476,6 +497,14 @@ class SupportMatrixDirective(rst.Directive):
                 nodes.literal(text=status),
             ]
             info_list.append(subitem_status)
+
+            if feature.maturity:
+                subitem_maturity = nodes.list_item()
+                subitem_maturity += [
+                    nodes.strong(text="Maturity: "),
+                    nodes.literal(text=feature.maturity),
+                ]
+                info_list.append(subitem_maturity)
 
             para_info.append(info_list)
             item.append(para_info)
