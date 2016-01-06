@@ -170,3 +170,7 @@ Key TODOs:
 * replace tick and cross in support matrix with "deployment ratings"
 * eventually generate the tick and cross from live, historical, CI results
 
+Prototype Feature Support Matrix
+================================
+
+.. support_matrix:: feature_classification.ini
