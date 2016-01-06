@@ -99,7 +99,8 @@ class SupportMatrixImplementation(object):
 
 class SupportMatrixTarget(object):
 
-    def __init__(self, key, title, driver, hypervisor=None, architecture=None):
+    def __init__(self, key, title, driver, hypervisor=None, architecture=None,
+                 link=None):
         """:param key: Unique identifier for the hypervisor driver
         :param title: Human friendly name of the hypervisor
         :param driver: Name of the Nova driver
@@ -111,12 +112,17 @@ class SupportMatrixTarget(object):
         self.driver = driver
         self.hypervisor = hypervisor
         self.architecture = architecture
+        self.link = link
 
 
 class SupportMatrixDirective(rst.Directive):
 
     # The argument is the filename, e.g. support-matrix.ini
     required_arguments = 1
+
+    option_spec = {
+        'complex-targets': bool,           # default: false
+    }
 
     def run(self):
         matrix = self._load_support_matrix()
@@ -141,12 +147,15 @@ class SupportMatrixDirective(rst.Directive):
         env.note_dependency(rel_fpath)
 
         matrix = SupportMatrix()
-        matrix.targets = self._get_targets()
-        matrix.features = self._get_features(matrix.targets)
+        if self.options.get('complex-targets', False):
+            matrix.targets = self._get_complex_targets(cfg)
+        else:
+            matrix.targets = self._get_targets(cfg)
+        matrix.features = self._get_features(cfg, matrix.targets)
 
         return matrix
 
-    def _get_targets(self):
+    def _get_targets(self, cfg):
         # The 'targets' section is special - it lists all the
         # hypervisors that this file records data for
 
@@ -186,7 +195,32 @@ class SupportMatrixDirective(rst.Directive):
 
         return targets
 
-    def _get_features(self, targets):
+    def _get_complex_targets(self, cfg):
+        # The 'targets' section is special - it lists all the
+        # hypervisors that this file records data for
+
+        targets = {}
+
+        for section in cfg.sections():
+            if not section.startswith("target."):
+                continue
+
+            # The driver string will optionally contain
+            # a hypervisor and architecture qualifier
+            # so we expect between 1 and 3 components
+            # in the name
+            key = section[7:]
+            title = cfg.get(section, "title")
+            link = cfg.get(section, "link")
+            # TODO(johngarbutt) need to deal better with finding the driver
+            name = key.split("-")
+            target = SupportMatrixTarget(key, title, name[0], link=link)
+
+            targets[key] = target
+
+        return targets
+
+    def _get_features(self, cfg, targets):
         # All sections except 'targets' describe some feature of
         # the Nova hypervisor driver implementation
 
@@ -194,6 +228,8 @@ class SupportMatrixDirective(rst.Directive):
 
         for section in cfg.sections():
             if section == "targets":
+                continue
+            if section.startswith("target."):
                 continue
             if not cfg.has_option(section, "title"):
                 raise Exception(
@@ -235,14 +271,15 @@ class SupportMatrixDirective(rst.Directive):
             # Now we've got the basic feature details, we must process
             # the hypervisor driver implementation for each feature
             for item in cfg.options(section):
-                if not item.startswith("driver-impl-"):
-                    continue
+                key = item.replace("driver-impl-", "")
 
-                key = item[12:]
                 if key not in targets:
-                    raise Exception(
-                        "Driver impl '%s' in '[%s]' not declared" %
-                        (item, section))
+                    # TODO(johngarbutt) would be better to skip known list
+                    if item.startswith("driver-impl-"):
+                        raise Exception(
+                            "Driver impl '%s' in '[%s]' not declared" %
+                            (item, section))
+                    continue
 
                 status = cfg.get(section, item)
                 if status not in SupportMatrixImplementation.STATUS_ALL:
@@ -263,8 +300,10 @@ class SupportMatrixDirective(rst.Directive):
 
             for key in targets:
                 if key not in feature.implementations:
+                    raise Exception("'%s' '%s' '%s' '%s'" %
+                            (key, section, targets, feature.implementations))
                     raise Exception("'%s' missing in '[%s]' section" %
-                                    (target.key, section))
+                                    (key, section))
 
             features.append(feature)
 
