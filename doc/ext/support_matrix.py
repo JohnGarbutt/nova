@@ -518,14 +518,16 @@ class SupportMatrixDirective(rst.Directive):
                         "Maturity", feature.maturity)
             if feature.api_doc_link:
                 self._append_info_list_item(info_list,
-                        "API Docs", feature.api_doc_link)
+                        "API Docs", link=feature.api_doc_link)
             if feature.admin_doc_link:
                 self._append_info_list_item(info_list,
-                        "Admin Docs", feature.api_doc_link)
+                        "Admin Docs", link=feature.admin_doc_link)
             if feature.tempest_test_uuids:
                 for uuid in feature.tempest_test_uuids.split(";"):
+                    base = "https://github.com/openstack/tempest/search?q=%s"
+                    link = base % uuid
                     self._append_info_list_item(info_list,
-                            "Tempest tests", uuid)
+                            "Tempest tests", text=uuid, link=link)
 
             para_info.append(info_list)
             item.append(para_info)
@@ -558,12 +560,18 @@ class SupportMatrixDirective(rst.Directive):
             item.append(para_divers)
             details.append(item)
 
-    def _append_info_list_item(self, info_list, title, text):
+    def _append_info_list_item(self, info_list, title, text=None, link=None):
         subitem = nodes.list_item()
-        subitem += [
-            nodes.strong(text="%s: " % title),
-            nodes.literal(text=text),
-        ]
+        subitem.append(nodes.strong(text="%s: " % title))
+        if link:
+            if not text:
+                text = link
+            ref = nodes.reference("", text, refuri=link)
+            txt = nodes.inline()
+            txt.append(ref)
+            subitem.append(txt)
+        elif text:
+            subitem.append(nodes.literal(text=text))
         info_list.append(subitem)
 
     def _build_notes(self, content):
