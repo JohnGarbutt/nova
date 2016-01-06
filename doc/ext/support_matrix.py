@@ -461,11 +461,24 @@ class SupportMatrixDirective(rst.Directive):
             item.append(nodes.strong(text=feature.title,
                                      ids=[id]))
 
-            para = nodes.paragraph()
-            para.append(nodes.strong(text="Status: " + status + ". "))
             if feature.notes is not None:
-                para.append(nodes.inline(text=feature.notes))
-            item.append(para)
+                para_notes = nodes.paragraph()
+                para_notes.append(nodes.inline(text=feature.notes))
+                item.append(para_notes)
+
+            para_info = nodes.paragraph()
+            para_info.append(nodes.strong(text="feature info:"))
+            info_list = nodes.bullet_list()
+
+            subitem_status = nodes.list_item()
+            subitem_status += [
+                nodes.strong(text="Status: "),
+                nodes.literal(text=status),
+            ]
+            info_list.append(subitem_status)
+
+            para_info.append(info_list)
+            item.append(para_info)
 
             if feature.cli:
                 item.append(self._create_cli_paragraph(feature))
