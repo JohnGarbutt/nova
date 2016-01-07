@@ -509,7 +509,7 @@ class SupportMatrixDirective(rst.Directive):
                 item.append(para_notes)
 
             para_info = nodes.paragraph()
-            para_info.append(nodes.strong(text="feature info:"))
+            para_info.append(nodes.strong(text="info:"))
             info_list = nodes.bullet_list()
 
             self._append_info_list_item(info_list, "Status", status)
