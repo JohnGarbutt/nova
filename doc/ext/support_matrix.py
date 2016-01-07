@@ -523,11 +523,15 @@ class SupportMatrixDirective(rst.Directive):
                 self._append_info_list_item(info_list,
                         "Admin Docs", link=feature.admin_doc_link)
             if feature.tempest_test_uuids:
+                items = []
                 for uuid in feature.tempest_test_uuids.split(";"):
                     base = "https://github.com/openstack/tempest/search?q=%s"
                     link = base % uuid
-                    self._append_info_list_item(info_list,
-                            "Tempest tests", text=uuid, link=link)
+                    inline_ref = self._get_uri_ref(link, text=uuid)
+                    items.append(inline_ref)
+                    items.append(nodes.inline(text=", "))
+                self._append_info_list_item(info_list,
+                       "Tempest tests", items=items[:-1])
 
             para_info.append(info_list)
             item.append(para_info)
@@ -560,16 +564,24 @@ class SupportMatrixDirective(rst.Directive):
             item.append(para_divers)
             details.append(item)
 
-    def _append_info_list_item(self, info_list, title, text=None, link=None):
+    def _get_uri_ref(self, link, text=None):
+        if not text:
+            text = link
+        ref = nodes.reference("", text, refuri=link)
+        inline = nodes.inline()
+        inline.append(ref)
+        return inline
+
+    def _append_info_list_item(self, info_list, title,
+                               text=None, link=None, items=None):
         subitem = nodes.list_item()
         subitem.append(nodes.strong(text="%s: " % title))
-        if link:
-            if not text:
-                text = link
-            ref = nodes.reference("", text, refuri=link)
-            txt = nodes.inline()
-            txt.append(ref)
-            subitem.append(txt)
+        if items:
+            for item in items:
+                subitem.append(item)
+        elif link:
+            inline_link = self._get_uri_ref(link, text)
+            subitem.append(inline_link)
         elif text:
             subitem.append(nodes.literal(text=text))
         info_list.append(subitem)
