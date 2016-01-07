@@ -275,6 +275,9 @@ class SupportMatrixDirective(rst.Directive):
                          ",".join(SupportMatrixFeature.STATUS_ALL)))
 
             maturity = None
+            maturity_mode = self.options.get('maturity-mode', False)
+            if maturity_mode:
+                maturity = SupportMatrixFeature.MATURITY_INCOMPLETE
             if cfg.has_option(section, "maturity"):
                 maturity = cfg.get(section, "maturity").lower()
                 if maturity not in SupportMatrixFeature.MATURITY_ALL:
@@ -528,22 +531,26 @@ class SupportMatrixDirective(rst.Directive):
                 self._append_info_list_item(info_list,
                         "Maturity", items=[maturity_literal])
             self._append_info_list_item(info_list, "Status", status)
-            if feature.api_doc_link:
+            maturity_mode = self.options.get('maturity-mode', False)
+            if feature.api_doc_link or maturity_mode:
                 self._append_info_list_item(info_list,
                         "API Docs", link=feature.api_doc_link)
-            if feature.admin_doc_link:
+            if feature.admin_doc_link or maturity_mode:
                 self._append_info_list_item(info_list,
                         "Admin Docs", link=feature.admin_doc_link)
+            tempest_items = []
             if feature.tempest_test_uuids:
-                items = []
                 for uuid in feature.tempest_test_uuids.split(";"):
                     base = "https://github.com/openstack/tempest/search?q=%s"
                     link = base % uuid
                     inline_ref = self._get_uri_ref(link, text=uuid)
-                    items.append(inline_ref)
-                    items.append(nodes.inline(text=", "))
+                    tempest_items.append(inline_ref)
+                    tempest_items.append(nodes.inline(text=", "))
+                # removing trailing punctuation
+                tempest_items = tempest_items[:-1]
+            if feature.tempest_test_uuids or maturity_mode:
                 self._append_info_list_item(info_list,
-                       "Tempest tests", items=items[:-1])
+                       "Tempest tests", items=tempest_items)
 
             para_info.append(info_list)
             item.append(para_info)
