@@ -139,7 +139,8 @@ class SupportMatrixDirective(rst.Directive):
     required_arguments = 1
 
     option_spec = {
-        'complex-targets': bool,           # default: false
+        'complex-targets': bool,  # parse complex targets, default: false
+        'maturity-mode': bool,    # show maturity in matrix, default: false
     }
 
     def run(self):
@@ -393,7 +394,11 @@ class SupportMatrixDirective(rst.Directive):
         blank.append(nodes.emphasis(text="Feature"))
         header.append(blank)
         blank = nodes.entry()
-        blank.append(nodes.emphasis(text="Status"))
+        maturity_mode = self.options.get('maturity-mode', False)
+        if maturity_mode:
+            blank.append(nodes.emphasis(text="Maturity"))
+        else:
+            blank.append(nodes.emphasis(text="Status"))
         header.append(blank)
         summaryhead.append(header)
 
@@ -434,9 +439,14 @@ class SupportMatrixDirective(rst.Directive):
 
             statuscol = nodes.entry()
             item.append(statuscol)
-            statuscol.append(nodes.inline(
-                text=feature.status,
-                classes=["sp_feature_" + feature.status]))
+            if maturity_mode:
+                statuscol.append(nodes.inline(
+                    text=feature.maturity,
+                    classes=["sp_maturity_" + feature.maturity]))
+            else:
+                statuscol.append(nodes.inline(
+                    text=feature.status,
+                    classes=["sp_feature_" + feature.status]))
 
             # and then one column for each hypervisor driver
             impls = matrix.targets.keys()

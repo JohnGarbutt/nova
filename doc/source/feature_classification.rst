@@ -175,3 +175,4 @@ Prototype Feature Support Matrix
 
 .. support_matrix:: feature_classification.ini
                     :complex-targets: True
+                    :maturity-mode: True
