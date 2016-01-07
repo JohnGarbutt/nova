@@ -513,8 +513,10 @@ class SupportMatrixDirective(rst.Directive):
             info_list = nodes.bullet_list()
 
             if feature.maturity:
+                maturity_literal = nodes.literal(text=feature.maturity,
+                        classes=["sp_maturity_" + feature.maturity])
                 self._append_info_list_item(info_list,
-                        "Maturity", feature.maturity)
+                        "Maturity", items=[maturity_literal])
             self._append_info_list_item(info_list, "Status", status)
             if feature.api_doc_link:
                 self._append_info_list_item(info_list,
