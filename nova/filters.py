@@ -33,6 +33,11 @@ class BaseFilter(object):
         """
         return True
 
+    def filter_one(self, obj, spec_obj):
+        """Return True if it passes the filter, False otherwise.
+        """
+        return self._filter_one(obj, spec_obj)
+
     def filter_all(self, filter_obj_list, spec_obj):
         """Yield objects that pass the filter.
 

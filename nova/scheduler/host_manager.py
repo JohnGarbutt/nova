@@ -328,10 +328,14 @@ class HostManager(object):
         self.filter_cls_map = {cls.__name__: cls for cls in filter_classes}
         self.filter_obj_map = {}
         self.default_filters = self._choose_host_filters(self._load_filters())
+        self.soft_filters = self._choose_host_filters(
+                CONF.scheduler_soft_filters)
         self.weight_handler = weights.HostWeightHandler()
         weigher_classes = self.weight_handler.get_matching_classes(
                 CONF.scheduler_weight_classes)
         self.weighers = [cls() for cls in weigher_classes]
+        if self.soft_filters and self.weighers:
+            LOG.warning(_LW("Bad config: soft filters override weights."))
         # Dict of aggregates keyed by their ID
         self.aggs_by_id = {}
         # Dict of set of aggregate IDs keyed by the name of the host belonging
@@ -345,7 +349,7 @@ class HostManager(object):
             self._init_instance_info()
 
     def _load_filters(self):
-        return CONF.scheduler_default_filters
+        return CONF.scheduler_default_filters  # TODO(johng) hard_filters
 
     def _init_aggregates(self):
         elevated = context_module.get_admin_context()
@@ -533,6 +537,9 @@ class HostManager(object):
 
     def get_weighed_hosts(self, hosts, spec_obj):
         """Weigh the hosts."""
+        if CONF.scheduler_soft_filters:
+            return self.weight_handler.get_filter_weighed_objects(
+                    self.soft_filters, self.weighers, hosts, spec_obj)
         return self.weight_handler.get_weighed_objects(self.weighers,
                 hosts, spec_obj)
 

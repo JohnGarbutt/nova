@@ -123,6 +123,7 @@ a different scheduler, this option has no effect.
     scheduler_default_filters
 """)
 
+# TODO(johngarbutt) rename to scheduler_hard_filters
 host_mgr_default_filt_opt = cfg.ListOpt("scheduler_default_filters",
         default=[
           "RetryFilter",
@@ -183,6 +184,35 @@ a different scheduler, this option has no effect.
     None
 """)
 
+host_mgr_sched_wgt_filter_cls_opt = cfg.ListOpt("scheduler_soft_filters",
+        default=[],
+        help="""
+This is a list of filter class names, in a preference order, the most
+preferred first. If a host passes a more preferred filter, it will always be
+ranked higher than a host that has not passed that filer. All soft filter will
+be run against all hosts that have passed all the hard filters.
+The same filter classes can be used for both ``scheduler_soft_filters``
+and ``scheduler_hard_filters``
+
+An instance will be scheduled to one of the N most-weighted hosts, where N is
+'scheduler_host_subset_size'.
+
+By default, this is empty, and the old weighting system using
+``scheduler_weight_classes`` is still in place.
+
+This option is only used by the FilterScheduler and its subclasses; if you use
+a different scheduler, this option has no effect.
+
+* Services that use this:
+
+    ``nova-scheduler``
+
+* Related options:
+
+    All of the filters in this option *must* be present in the
+    'scheduler_available_filters' option, or a SchedulerHostFilterNotFound
+    exception will be raised.
+""")
 host_mgr_tracks_inst_chg_opt = cfg.BoolOpt("scheduler_tracks_instance_changes",
         default=True,
         help="""

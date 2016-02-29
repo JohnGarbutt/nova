@@ -18,6 +18,8 @@ Tests For weights.
 
 import mock
 
+from nova import filters
+from nova import objects
 from nova.scheduler import weights as scheduler_weights
 from nova.scheduler.weights import ram
 from nova import test
@@ -72,3 +74,42 @@ class TestWeigher(test.NoDBTestCase):
         self.assertEqual(1, len(weighed_host))
         self.assertEqual('host1', weighed_host[0].obj.host)
         self.assertFalse(mock_weigh.called)
+
+    def test_get_filter_weighed_objects(self):
+
+        class Filter1(filters.BaseFilter):
+            """Test Filter class #1."""
+            pass
+
+        class Filter2(filters.BaseFilter):
+            """Test Filter class #2."""
+            pass
+
+        class FakeWeigher(weights.BaseWeigher):
+            def _weigh_object(self, obj, props):
+                if obj == 'obj1':
+                    return 9.0
+                if obj == 'obj2':
+                    return -1.0
+                else:
+                    return 0.0
+
+        filt1_mock = mock.Mock(Filter1)
+        filt2_mock = mock.Mock(Filter2)
+        filter_mocks = [filt1_mock, filt2_mock]
+        weighers = [FakeWeigher()]
+        filter_obj_list = ['obj1', 'obj2', 'obj3']
+        spec_obj = objects.RequestSpec()
+
+        filt1_mock.filter_one.side_effect = [False, False, True]
+        filt2_mock.filter_one.side_effect = [True, False, True]
+
+        weight_handler = scheduler_weights.HostWeightHandler()
+        weighed_hosts = weight_handler.get_filter_weighed_objects(
+                filter_mocks, weighers, filter_obj_list, spec_obj)
+
+        self.assertEqual(3, len(weighed_hosts))
+        expected_hosts = ['obj3', 'obj1', 'obj2']
+        self.assertEqual(expected_hosts, [wh.obj for wh in weighed_hosts])
+        expected_w = [(2 + 4 + 0.0), (2 + 1.0), (0 + 0.1)]
+        self.assertEqual(expected_w, [wh.weight for wh in weighed_hosts])

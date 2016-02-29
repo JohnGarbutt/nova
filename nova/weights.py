@@ -141,3 +141,33 @@ class BaseWeightHandler(loadables.BaseLoader):
                 obj.weight += weigher.weight_multiplier() * weight
 
         return sorted(weighed_objs, key=lambda x: x.weight, reverse=True)
+
+    def get_filter_weighed_objects(self, filters, weighers, obj_list,
+                spec_obj):
+        """Return a sorted (descending), normalized list of WeighedObjects."""
+        weighed_objs = [self.object_class(obj, 0.0) for obj in obj_list]
+
+        if len(weighed_objs) <= 1:
+            return weighed_objs
+
+        num_filters = len(filters)
+        for i, filter_ in enumerate(filters):
+            weight = 2 ** (num_filters - i)
+
+            for weighed_obj in weighed_objs:
+                obj = weighed_obj.obj
+                if filter_.filter_one(obj, spec_obj):
+                    weighed_obj.weight += weight
+
+        if weighers:
+            extra_weighers_obj = self.get_weighed_objects(
+                    weighers, obj_list, spec_obj)
+            extra_weights = [wobj.weight for wobj in extra_weighers_obj]
+            extra_weights = normalize(extra_weights,
+                                      minval=min(extra_weights),
+                                      maxval=max(extra_weights))
+            # add values between 0 and 1 to existing filter driven weights
+            for i, extra_weight in enumerate(extra_weights):
+                weighed_objs[i].weight += extra_weight
+
+        return sorted(weighed_objs, key=lambda x: x.weight, reverse=True)
