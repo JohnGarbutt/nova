@@ -318,19 +318,25 @@ class InstanceMetadata(object):
             }
 
             if cells_opts.get_cell_type() == 'compute':
-                cells_api = cells_rpcapi.CellsAPI()
-                keypair = cells_api.get_keypair_at_top(
-                  context.get_admin_context(), self.instance.user_id,
-                  self.instance.key_name)
+                metadata['keys'] = [
+                    {'name': self.instance.key_name,
+                     'type': objects.keypair.KEYPAIR_TYPE_SSH,
+                     'data': self.instance.key_data}
+                ]
+                # TODO - fix timeouts, etc
+                #cells_api = cells_rpcapi.CellsAPI()
+                #keypair = cells_api.get_keypair_at_top(
+                #  context.get_admin_context(), self.instance.user_id,
+                #  self.instance.key_name)
             else:
                 keypair = keypair_obj.KeyPair.get_by_name(
                     context.get_admin_context(), self.instance.user_id,
                     self.instance.key_name)
-            metadata['keys'] = [
-                {'name': keypair.name,
-                 'type': keypair.type,
-                 'data': keypair.public_key}
-            ]
+                metadata['keys'] = [
+                    {'name': keypair.name,
+                     'type': keypair.type,
+                     'data': keypair.public_key}
+                ]
 
         metadata['hostname'] = self._get_hostname()
         metadata['name'] = self.instance.display_name
