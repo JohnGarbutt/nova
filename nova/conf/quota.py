@@ -16,6 +16,7 @@
 
 
 from oslo_config import cfg
+from oslo_limit import opts as oslo_limit
 
 quota_group = cfg.OptGroup(
     name='quota',
@@ -25,7 +26,18 @@ Quota options allow to manage quotas in openstack deployment.
 """)
 
 quota_opts = [
+    cfg.BoolOpt('use_oslo_limit',
+        default=False,
+        help="""
+When true, oslo.limit is used to enforce quotas in Nova via oslo_limit,
+and hard codes the quota driver to be no_op.
+TODO: details.
+"""),
     cfg.IntOpt('instances',
+        deprecated_for_removal=True,
+        deprecated_since='19.0.0',
+        deprecated_reason="""
+When using oslo.limit this has no meaning, the default is in Keystone.""",
         min=-1,
         default=10,
         deprecated_group='DEFAULT',
@@ -39,6 +51,10 @@ Possible Values
 * -1 to disable the quota.
 """),
     cfg.IntOpt('cores',
+        deprecated_for_removal=True,
+        deprecated_since='19.0.0',
+        deprecated_reason="""
+When using oslo.limit this has no meaning, the default is in Keystone.""",
         min=-1,
         default=20,
         deprecated_group='DEFAULT',
@@ -52,6 +68,10 @@ Possible values:
 * -1 to disable the quota.
 """),
     cfg.IntOpt('ram',
+        deprecated_for_removal=True,
+        deprecated_since='19.0.0',
+        deprecated_reason="""
+When using oslo.limit this has no meaning, the default is in Keystone.""",
         min=-1,
         default=50 * 1024,
         deprecated_group='DEFAULT',
@@ -256,6 +276,10 @@ Possible values:
 * -1 to disable the quota.
 """),
     cfg.StrOpt('driver',
+        deprecated_for_removal=True,
+        deprecated_since='19.0.0',
+        deprecated_reason="""
+When using oslo.limit this has no meaning, the default is in Keystone.""",
         default='nova.quota.DbQuotaDriver',
         choices=[
             ('nova.quota.DbQuotaDriver', 'Stores quota limit information '
@@ -332,6 +356,8 @@ and ram.
 def register_opts(conf):
     conf.register_group(quota_group)
     conf.register_opts(quota_opts, group=quota_group)
+
+    oslo_limit.register_opts(conf)
 
 
 def list_opts():

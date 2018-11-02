@@ -882,7 +882,11 @@ class QuotaEngine(object):
     def _driver(self):
         if self.__driver:
             return self.__driver
-        self.__driver = importutils.import_object(CONF.quota.driver)
+        if CONF.quota.use_oslo_limit:
+            self.__driver = importutils.import_object(
+                    'nova.quota.NoopQuotaDriver')
+        else:
+            self.__driver = importutils.import_object(CONF.quota.driver)
         return self.__driver
 
     def register_resource(self, resource):
@@ -1253,6 +1257,16 @@ def _instances_cores_ram_count_api_db_placement(context, project_id,
     return total_counts
 
 
+def is_qfd_populated():
+    if project_id in UID_QFD_POPULATED_CACHE_BY_PROJECT:
+        return True
+    uid_qfd_populated = _user_id_queued_for_delete_populated(
+        context, project_id)
+    if uid_qfd_populated:
+        UID_QFD_POPULATED_CACHE_BY_PROJECT.add(project_id)
+    return uid_qfd_populated
+
+
 def _instances_cores_ram_count(context, project_id, user_id=None):
     """Get the counts of instances, cores, and ram.
 
@@ -1272,13 +1286,7 @@ def _instances_cores_ram_count(context, project_id, user_id=None):
     if CONF.quota.count_usage_from_placement:
         # If a project has all user_id and queued_for_delete data populated,
         # cache the result to avoid needless database checking in the future.
-        if project_id not in UID_QFD_POPULATED_CACHE_BY_PROJECT:
-            uid_qfd_populated = _user_id_queued_for_delete_populated(
-                context, project_id)
-            if uid_qfd_populated:
-                UID_QFD_POPULATED_CACHE_BY_PROJECT.add(project_id)
-        else:
-            uid_qfd_populated = True
+        uid_qfd_populated = is_qfd_populated()
         if not uid_qfd_populated:
             LOG.debug('Falling back to legacy quota counting method for '
                       'instances, cores, and ram')

@@ -72,3 +72,4 @@ taskflow>=2.16.0 # Apache-2.0
 python-dateutil>=2.5.3 # BSD
 zVMCloudConnector>=1.1.1;sys_platform!='win32'  # Apache 2.0 License
 futurist>=1.8.0 # Apache-2.0
+git+https://github.com/JohnGarbutt/oslo.limit.git@a5b908046fd904c25b6cd15c65266c747774b5ab#egg=oslo_limit

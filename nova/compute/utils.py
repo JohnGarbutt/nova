@@ -33,6 +33,7 @@ from nova.compute import task_states
 from nova.compute import vm_states
 import nova.conf
 from nova import exception
+from nova.limits import keystone as keystone_limits
 from nova import notifications
 from nova.notifications.objects import aggregate as aggregate_notification
 from nova.notifications.objects import base as notification_base
@@ -1050,6 +1051,10 @@ def check_num_instances_quota(context, instance_type, min_count,
                                     project_id, user_id=user_id,
                                     check_project_id=project_id,
                                     check_user_id=user_id)
+        # TODO(johngarbutt) how to support error handing logic below?
+        # TODO need to pass in instance below (for boot from volume checks)
+        keystone_limits.check_limits(context, project_id, None, instance_type)
+
     except exception.OverQuota as exc:
         quotas = exc.kwargs['quotas']
         overs = exc.kwargs['overs']

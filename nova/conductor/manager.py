@@ -667,6 +667,7 @@ class ComputeTaskManager(base.Base):
                     else:
                         alloc_req = None
                     if alloc_req:
+                        # TODO(johngarbutt) recheck quota here due to reclaim?
                         host_available = scheduler_utils.claim_resources(
                                 elevated, self.report_client, spec_obj,
                                 instance.uuid, alloc_req,

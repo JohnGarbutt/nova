@@ -61,6 +61,8 @@ from nova import exception_wrapper
 from nova import hooks
 from nova.i18n import _
 from nova import image
+from nova.limits import keystone as keystone_limits
+from nova.limits import local as local_limits
 from nova import network
 from nova.network import model as network_model
 from nova.network.security_group import openstack_driver
@@ -307,6 +309,8 @@ class API(base.Base):
         try:
             objects.Quotas.limit_check(context,
                                        injected_files=len(injected_files))
+            local_limits.check_count(local_limits.INJECTED_FILES,
+                                     len(injected_files))
         except exception.OverQuota:
             raise exception.OnsetFileLimitExceeded()
 
@@ -322,6 +326,10 @@ class API(base.Base):
             objects.Quotas.limit_check(context,
                                        injected_file_path_bytes=max_path,
                                        injected_file_content_bytes=max_content)
+            local_limits.check_count(
+                local_limits.INJECTED_FILES_PATH, max_path)
+            local_limits.check_count(
+                local_limits.INJECTED_FILES_CONTENT, max_content)
         except exception.OverQuota as exc:
             # Favor path limit over content limit for reporting
             # purposes
@@ -342,6 +350,8 @@ class API(base.Base):
         num_metadata = len(metadata)
         try:
             objects.Quotas.limit_check(context, metadata_items=num_metadata)
+            local_limits.check_count(
+                local_limits.SERVER_METADATA_ITEMS, num_metadata)
         except exception.OverQuota as exc:
             quota_metadata = exc.kwargs['quotas']['metadata_items']
             raise exception.MetadataLimitExceeded(allowed=quota_metadata)
@@ -1025,6 +1035,9 @@ class API(base.Base):
                             objects.Quotas.check_deltas(
                                 context, {'server_group_members': 1},
                                 instance_group, context.user_id)
+                            local_limits.check_delta(
+                                context, local_limits.SERVER_GROUP_MEMBERS,
+                                instance_group, delta=1)
                         except exception.OverQuota:
                             msg = _("Quota exceeded, too many servers in "
                                     "group")
@@ -1043,6 +1056,7 @@ class API(base.Base):
                             objects.Quotas.check_deltas(
                                 context, {'server_group_members': 0},
                                 instance_group, context.user_id)
+                            # NOTE(johngarbutt): no recheck with unified limits
                         except exception.OverQuota:
                             objects.InstanceGroup._remove_members_in_db(
                                 context, instance_group.id, [instance.uuid])
@@ -3455,6 +3469,10 @@ class API(base.Base):
                                             project_id, user_id=user_id,
                                             check_project_id=project_id,
                                             check_user_id=user_id)
+                # NOTE(johngarbutt) check for sum of existing usage and
+                # extra usage from new flavor, as will be claimed in placement
+                keystone_limits.check_limits(context, project_id, instance,
+                                             new_flavor)
             except exception.OverQuota as exc:
                 quotas = exc.kwargs['quotas']
                 overs = exc.kwargs['overs']
@@ -5671,6 +5689,8 @@ class KeypairAPI(base.Base):
                          '1 and 255 characters long'))
         try:
             objects.Quotas.check_deltas(context, {'key_pairs': 1}, user_id)
+            local_limits.check_delta(context,
+                                     local_limits.KEY_PAIRS, user_id, 1)
         except exception.OverQuota:
             raise exception.KeypairLimitExceeded()
 
@@ -5743,6 +5763,8 @@ class KeypairAPI(base.Base):
         if CONF.quota.recheck_quota:
             try:
                 objects.Quotas.check_deltas(context, {'key_pairs': 0}, user_id)
+                # TODO(johngarbutt) do we really need this one?
+                # limit.check_static_limit(context, 'key_pairs', user_id)
             except exception.OverQuota:
                 keypair.destroy()
                 raise exception.KeypairLimitExceeded()

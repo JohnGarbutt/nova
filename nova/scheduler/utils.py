@@ -387,9 +387,16 @@ def resources_from_flavor(instance, flavor):
     This takes an instance and a flavor and returns a dict of
     resource_class:amount based on the attributes of the flavor, accounting for
     any overrides that are made in extra_specs.
+
+    This method is also used to work out what unified limits may be exceeded
+    after claiming resources from placement.
     """
     is_bfv = compute_utils.is_volume_backed_instance(instance._context,
                                                      instance)
+    return _resources_from_flavor(flavor, is_bfv)
+
+
+def _resources_from_flavor(flavor, is_bfv=True):
     swap_in_gb = compute_utils.convert_mb_to_ceil_gb(flavor.swap)
     disk = ((0 if is_bfv else flavor.root_gb) +
             swap_in_gb + flavor.ephemeral_gb)

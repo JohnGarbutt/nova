@@ -818,6 +818,7 @@ class NetworkManager(manager.Manager):
                                                                  instance)
         try:
             quotas.check_deltas(context, {'fixed_ips': 1}, quota_project)
+            # NOTE(johngarbutt) not moved to unified limits
         except exception.OverQuota as exc:
             count = exc.kwargs['usages']['fixed_ips']
             LOG.warning("Quota exceeded for project %(pid)s, tried to "
@@ -879,6 +880,7 @@ class NetworkManager(manager.Manager):
                     try:
                         quotas.check_deltas(context, {'fixed_ips': 0},
                                             quota_project)
+                        # NOTE(johngarbutt) not moved to unified limits
                     except exception.OverQuota as exc:
                         # Cleanup of the fixed IP allocation occurs in the
                         # outermost catch-all except block.

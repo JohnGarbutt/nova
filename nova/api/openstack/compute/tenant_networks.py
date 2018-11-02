@@ -142,6 +142,7 @@ class TenantNetworkController(wsgi.Controller):
             if CONF.enable_network_quota:
                 objects.Quotas.check_deltas(context, {'networks': 1},
                                             context.project_id)
+                # NOTE(johngarbutt): not moved to unified limits
         except exception.OverQuota:
             msg = _("Quota exceeded, too many networks.")
             raise exc.HTTPForbidden(explanation=msg)
@@ -168,6 +169,7 @@ class TenantNetworkController(wsgi.Controller):
             try:
                 objects.Quotas.check_deltas(context, {'networks': 0},
                                             context.project_id)
+                # NOTE(johngarbutt): not moved to unified limits
             except exception.OverQuota:
                 self.network_api.delete(context,
                                         network_dict(networks[0])['id'])

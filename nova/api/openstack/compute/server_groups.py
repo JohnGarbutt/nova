@@ -30,6 +30,7 @@ import nova.conf
 from nova import context as nova_context
 import nova.exception
 from nova.i18n import _
+from nova.limits import local as local_limit
 from nova import objects
 from nova.objects import service
 from nova.policies import server_groups as sg_policies
@@ -175,6 +176,8 @@ class ServerGroupController(wsgi.Controller):
         try:
             objects.Quotas.check_deltas(context, {'server_groups': 1},
                                         context.project_id, context.user_id)
+            local_limit.check_delta(context, local_limit.SERVER_GROUPS,
+                                    context.project_id, delta=1)
         except nova.exception.OverQuota:
             msg = _("Quota exceeded, too many server groups.")
             raise exc.HTTPForbidden(explanation=msg)
@@ -215,6 +218,7 @@ class ServerGroupController(wsgi.Controller):
                 objects.Quotas.check_deltas(context, {'server_groups': 0},
                                             context.project_id,
                                             context.user_id)
+                # NOTE(johngarbutt): no recheck in unified limits
             except nova.exception.OverQuota:
                 sg.destroy()
                 msg = _("Quota exceeded, too many server groups.")

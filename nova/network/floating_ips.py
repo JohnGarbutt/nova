@@ -204,6 +204,7 @@ class FloatingIP(object):
             if use_quota:
                 objects.Quotas.check_deltas(context, {'floating_ips': 1},
                                             project_id)
+                # NOTE(johngarbutt) not moved to unified limits
         except exception.OverQuota:
             LOG.warning("Quota exceeded for %s, tried to allocate "
                         "floating IP", context.project_id)
@@ -220,6 +221,7 @@ class FloatingIP(object):
             try:
                 objects.Quotas.check_deltas(context, {'floating_ips': 0},
                                             project_id)
+                # NOTE(johngarbutt) not moved to unified limits
             except exception.OverQuota:
                 objects.FloatingIP.deallocate(context, floating_ip.address)
                 LOG.warning("Quota exceeded for %s, tried to allocate "
