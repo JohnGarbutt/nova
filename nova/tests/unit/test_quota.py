@@ -2112,3 +2112,38 @@ class QuotaCountTestCase(test.NoDBTestCase):
                                          mock.sentinel.project_id,
                                          user_id=mock.sentinel.user_id)
         mock_uid_qfd_populated.assert_not_called()
+
+    @ddt.data(True, False)
+    @mock.patch('nova.quota.LOG.debug')
+    @mock.patch('nova.quota._user_id_queued_for_delete_populated')
+    @mock.patch('nova.quota._server_group_count_members_by_user_legacy')
+    @mock.patch('nova.objects.InstanceMappingList.get_count_by_uuids_and_user')
+    def test_server_group_count_members_by_user(self, uid_qfd_populated,
+                                                mock_get_im_count,
+                                                mock_legacy_count,
+                                                mock_uid_qfd_populated,
+                                                mock_debug_log):
+
+        mock_get_im_count.return_value = 5
+        mock_legacy_count.return_value = {'user': {'server_group_members': 5}}
+        mock_uid_qfd_populated.return_value = uid_qfd_populated
+        mock_group = mock.Mock(spec=objects.InstanceGroup)
+
+        counts = quota._server_group_count_members_by_user(
+            mock.sentinel.context, mock_group, mock.sentinel.user_id)
+
+        if uid_qfd_populated:
+            mock_get_im_count.assert_called_once_with(
+                mock.sentinel.context, mock_group.members,
+                mock.sentinel.user_id)
+            mock_legacy_count.assert_not_called()
+            mock_debug_log.assert_not_called()
+        else:
+            mock_legacy_count.assert_called_once_with(
+                mock.sentinel.context, mock_group,
+                mock.sentinel.user_id)
+            mock_debug_log.assert_called_once()
+            mock_get_im_count.assert_not_called()
+
+        expected = {'user': {'server_group_members': 5}}
+        self.assertDictEqual(expected, counts)

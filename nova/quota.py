@@ -1126,7 +1126,7 @@ def _security_group_count(context, project_id, user_id=None):
                                                 user_id=user_id)
 
 
-def _server_group_count_members_by_user(context, group, user_id):
+def _server_group_count_members_by_user_legacy(context, group, user_id):
     # NOTE(melwitt): This is mostly duplicated from
     # InstanceGroup.count_members_by_user() to query across multiple cells.
     # We need to be able to pass the correct cell context to
@@ -1161,6 +1161,18 @@ def _server_group_count_members_by_user(context, group, user_id):
         if build_request.instance_uuid not in instance_uuids:
             count += 1
     return {'user': {'server_group_members': count}}
+
+
+def _server_group_count_members_by_user(context, group, user_id):
+    if not _user_id_queued_for_delete_populated(context):
+        LOG.debug('Falling back to legacy quota counting method for server '
+                  'group members')
+        return _server_group_count_members_by_user_legacy(context, group,
+                                                          user_id)
+    else:
+        count = objects.InstanceMappingList.get_count_by_uuids_and_user(
+            context, group.members, user_id)
+        return {'user': {'server_group_members': count}}
 
 
 def _fixed_ip_count(context, project_id):

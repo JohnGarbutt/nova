@@ -59,6 +59,12 @@ class QuotaTestCase(test.NoDBTestCase):
                                         user_id='fake-user')
             instance.create()
             instance_uuids.append(instance.uuid)
+        im = objects.InstanceMapping(context=ctxt,
+                                     instance_uuid=instance.uuid,
+                                     project_id='fake-project',
+                                     user_id='fake-user',
+                                     cell_id=mapping1.id)
+        im.create()
 
         # Create an instance in cell2
         with context.target_cell(ctxt, mapping2) as cctxt:
@@ -67,13 +73,19 @@ class QuotaTestCase(test.NoDBTestCase):
                                         user_id='fake-user')
             instance.create()
             instance_uuids.append(instance.uuid)
+        im = objects.InstanceMapping(context=ctxt,
+                                     instance_uuid=instance.uuid,
+                                     project_id='fake-project',
+                                     user_id='fake-user',
+                                     cell_id=mapping2.id)
+        im.create()
 
         # Add the uuids to the group
         objects.InstanceGroup.add_members(ctxt, group.uuid, instance_uuids)
         # add_members() doesn't add the members to the object field
         group.members.extend(instance_uuids)
 
-        # Count server group members across cells
+        # Count server group members from instance mappings
         count = quota._server_group_count_members_by_user(ctxt, group,
                                                           'fake-user')
 
