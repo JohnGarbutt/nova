@@ -122,7 +122,7 @@ def set_rules(rules, overwrite=True, use_conf=False):
     _ENFORCER.set_rules(rules, overwrite, use_conf)
 
 
-def authorize(context, action, target, do_raise=True, exc=None):
+def authorize(context, action, target=None, do_raise=True, exc=None):
     """Verifies that the action is valid on the target in this context.
 
        :param context: nova context
@@ -133,7 +133,9 @@ def authorize(context, action, target, do_raise=True, exc=None):
            ``volume:attach_volume``
        :param target: dictionary representing the object of the action
            for object creation this should be a dictionary representing the
-           location of the object e.g. ``{'project_id': context.project_id}``
+           location of the object e.g. ``{'project_id': instance.project_id}``
+            If None, then this default target will be considered:
+            {'project_id': self.project_id, 'user_id': self.user_id}
        :param do_raise: if True (the default), raises PolicyNotAuthorized;
            if False, returns False
        :param exc: Class of the exception to raise if the check fails.
@@ -154,6 +156,13 @@ def authorize(context, action, target, do_raise=True, exc=None):
     credentials = context.to_policy_values()
     if not exc:
         exc = exception.PolicyNotAuthorized
+
+    # Legacy fallback for emtpy target from context.can()
+    # should be removed once we improve testing and scope checks
+    if target is None:
+        target = {'project_id': context.project_id,
+                  'user_id': context.user_id}
+
     try:
         result = _ENFORCER.authorize(action, target, credentials,
                                      do_raise=do_raise, exc=exc, action=action)
