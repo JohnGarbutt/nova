@@ -16,6 +16,7 @@
 """Test of Policy Engine For Nova."""
 
 import os.path
+import uuid
 
 import mock
 from oslo_policy import policy as oslo_policy
@@ -265,11 +266,31 @@ class RealRolePolicyTestCase(test.NoDBTestCase):
     def setUp(self):
         super(RealRolePolicyTestCase, self).setUp()
         self.policy = self.useFixture(policy_fixture.RealPolicyFixture())
-        self.non_admin_context = context.RequestContext('fake', 'fake',
-                                                        roles=['member'])
-        self.admin_context = context.RequestContext('fake', 'fake', True,
-                                                     roles=['member'])
-        self.target = {}
+
+        self.project_id = uuid.uuid4().hex
+        self.project_id_other = uuid.uuid4().hex
+        self.legacy_admin_project = uuid.uuid4().hex
+
+        self.system_admin = context.RequestContext(
+                "system_admin", None,
+                roles=['admin'], system_scope='all')
+
+        self.legacy_system_admin = context.RequestContext(
+                "legacy_system_admin",  self.legacy_admin_project,
+                roles=['admin'])
+
+        self.project_member = context.RequestContext(
+                "project_member", self.project_id,
+                roles=['member'])
+
+        self.legacy_project_member = context.RequestContext(
+                "legacy_project_member", self.project_id,
+                roles=['foo'])
+
+        self.other_project_member = context.RequestContext(
+                "other_project_member", self.project_id_other,
+                roles=['member'])
+
         self.fake_policy = jsonutils.loads(fake_policy.policy_data)
 
         self.admin_only_rules = (
@@ -435,25 +456,7 @@ class RealRolePolicyTestCase(test.NoDBTestCase):
                 continue
             self.assertIn(name, policy.get_rules())
 
-    def test_admin_only_rules(self):
-        for rule in self.admin_only_rules:
-            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
-                              self.non_admin_context, rule,
-                              {'project_id': 'fake', 'user_id': 'fake'})
-            policy.authorize(self.admin_context, rule, self.target)
-
-    def test_admin_or_owner_rules(self):
-        for rule in self.admin_or_owner_rules:
-            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
-                              self.non_admin_context, rule, self.target)
-            policy.authorize(self.non_admin_context, rule,
-                           {'project_id': 'fake', 'user_id': 'fake'})
-
-    def test_allow_all_rules(self):
-        for rule in self.allow_all_rules:
-            policy.authorize(self.non_admin_context, rule, self.target)
-
-    def test_rule_missing(self):
+    def test_no_rules_are_missing(self):
         rules = policy.get_rules()
         # eliqiao os_compute_api:os-quota-class-sets:show requires
         # admin=True or quota_class match, this rule won't belong to
@@ -464,3 +467,43 @@ class RealRolePolicyTestCase(test.NoDBTestCase):
             self.admin_or_owner_rules +
             self.allow_all_rules + special_rules)
         self.assertEqual(set([]), result)
+
+    def test_admin_only_rules(self):
+        for rule in self.admin_only_rules:
+            policy.authorize(self.system_admin, rule)
+            # NOTE(johnthetubaguy) this should eventually fail a system scope check
+            policy.authorize(self.legacy_system_admin, rule)
+
+            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
+                              self.project_member, rule)
+            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
+                              self.legacy_project_member, rule)
+            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
+                              self.other_project_member, rule)
+
+    def test_admin_or_owner_rules(self):
+        for rule in self.admin_or_owner_rules:
+            policy.authorize(self.system_admin, rule)
+            # NOTE(johnthetubaguy) this should eventually fail a system scope check
+            policy.authorize(self.legacy_system_admin, rule)
+
+            policy.authorize(self.project_member, rule)
+            # NOTE(johnthetubaguy) this should eventually fail a role check
+            policy.authorize(self.legacy_project_member, rule)
+            # By default policy allows any authenticated user,
+            # due to the default target most context.can() calls use
+            policy.authorize(self.other_project_member, rule)
+            # A small subset of callers correctly set a valid target
+            self.assertRaises(exception.PolicyNotAuthorized, policy.authorize,
+                              self.other_project_member, rule,
+                              target={'project_id': self.project_id})
+
+    def test_allow_all_rules(self):
+        for rule in self.allow_all_rules:
+            policy.authorize(self.system_admin, rule)
+            policy.authorize(self.legacy_system_admin, rule)
+            policy.authorize(self.project_member, rule)
+            policy.authorize(self.legacy_project_member, rule)
+            policy.authorize(self.other_project_member, rule)
+            policy.authorize(self.other_project_member, rule,
+                             target={'project_id': self.project_id})
