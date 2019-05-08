@@ -141,8 +141,11 @@ class AdminActionsPolicyEnforcementV21(PolicyEnforcementBase):
         # TODO add required mox to make this work
         req.environ['nova.context'] = self.system_admin
         func(req, *arg, **kwarg)
+
+        # TODO this now fails due to adding the system_scope check
         req.environ['nova.context'] = self.legacy_system_admin
-        func(req, *arg, **kwarg)
+        ensure_raises(req)
+        #func(req, *arg, **kwarg)
 
 
     def test_reset_network_policy_failed(self):

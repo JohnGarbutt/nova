@@ -24,7 +24,7 @@ POLICY_ROOT = 'os_compute_api:os-admin-actions:%s'
 admin_actions_policies = [
     policy.DocumentedRuleDefault(
         POLICY_ROOT % 'reset_state',
-        base.RULE_ADMIN_API,
+        "system_scope:all and %s" % base.RULE_ADMIN_API,
         "Reset the state of a given server",
         [
             {
@@ -34,7 +34,7 @@ admin_actions_policies = [
         ]),
     policy.DocumentedRuleDefault(
         POLICY_ROOT % 'inject_network_info',
-        base.RULE_ADMIN_API,
+        "system_scope:all and %s" % base.RULE_ADMIN_API,
         "Inject network information into the server",
         [
             {
@@ -44,7 +44,7 @@ admin_actions_policies = [
         ]),
     policy.DocumentedRuleDefault(
         POLICY_ROOT % 'reset_network',
-        base.RULE_ADMIN_API,
+        "system_scope:all and %s" % base.RULE_ADMIN_API,
         "Reset networking on a server",
         [
             {
