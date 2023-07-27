@@ -2164,6 +2164,38 @@ class LibvirtConfigGuestPCIeRootPortController(LibvirtConfigGuestController):
                 __init__(**kwargs)
         self.type = 'pci'
         self.model = 'pcie-root-port'
+        # TODO: also need at least the address bus to match the LibvirtConfigGuestPCIeExpanderBusController index
+        # e.g. <address type='pci' domain='0x0000' bus='<>' slot='??' function='0x0'/>
+        # but empty when not numa aware
+        self.target_bus = None
+
+
+class LibvirtConfigGuestPCIeExpanderBusController(LibvirtConfigGuestController):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestPCIeRootPortController, self).\
+                __init__(**kwargs)
+        self.type = 'pci'
+        self.model = 'pcie-expander-bus'
+        # TODO: need to add  <target><node>0</node></target>
+        self.target_numa_node = None
+        # TODO: also need at least the address bus to match the PCIeRootController
+        # e.g. <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+        # maybe slot == target_numa_node ?
+        self.target_bus = None
+        self.host_numa_node = None
+
+    def format_dom(self):
+        dev = super(LibvirtConfigGuestPCIeExpanderBusController, self).format_dom()
+
+        if self.target_numa_node:
+            target = etree.Element("target")
+            node = etree.Element("node")
+            target.append(node)
+            dev.append(target)
+
+        # TODO: add target_bus?
+        return dev
 
 
 class LibvirtConfigGuestHostdev(LibvirtConfigGuestDevice):
@@ -2207,6 +2239,8 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
 
         self.alias = None
 
+        self.target_bus = ""
+
     def __eq__(self, other):
         if not isinstance(other, LibvirtConfigGuestHostdevPCI):
             return False
@@ -2233,6 +2267,7 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
                                    else '0x' + self.function)
         source = etree.Element("source")
         source.append(address)
+        # TODO: add target_bus?
         dev.append(source)
         return dev
 

@@ -4963,7 +4963,7 @@ class LibvirtDriver(driver.ComputeDriver):
     def _detach_pci_devices(self, guest, pci_devs):
         try:
             for dev in pci_devs:
-                guest.detach_device(self._get_guest_pci_device(dev), live=True)
+                guest.detach_device(self._get_guest_pci_device(guest, dev), live=True)
                 # after detachDeviceFlags returned, we should check the dom to
                 # ensure the detaching is finished
                 xml = guest.get_xml_desc()
@@ -4992,7 +4992,7 @@ class LibvirtDriver(driver.ComputeDriver):
     def _attach_pci_devices(self, guest, pci_devs):
         try:
             for dev in pci_devs:
-                guest.attach_device(self._get_guest_pci_device(dev))
+                guest.attach_device(self._get_guest_pci_device(guest, dev))
 
         except libvirt.libvirtError:
             LOG.error('Attaching PCI devices %(dev)s to %(dom)s failed.',
@@ -5585,12 +5585,33 @@ class LibvirtDriver(driver.ComputeDriver):
         if CONF.libvirt.virt_type in ('kvm', 'qemu'):
             pcidev.managed = 'yes'
 
-    def _get_guest_pci_device(self, pci_device):
+    def _get_guest_pci_device(self, guest : vconfig.LibvirtConfigGuest, pci_device):
 
         dbsf = pci_utils.parse_address(pci_device.address)
         dev = vconfig.LibvirtConfigGuestHostdevPCI()
         dev.domain, dev.bus, dev.slot, dev.function = dbsf
         self._set_managed_mode(dev)
+
+        # TODO(johngarbutt): add in NUMA?!
+        # FIXME(johngarbutt) although we need to make the remove case work too!!!
+        host_numa = pci_device.numa_node
+        # check we have numa in use
+        if host_numa is not None and guest.numatune and guest.numatune.memnodes:
+            pcieExtender = None
+            for device in guest.devices:
+                if isinstance(device, vconfig.LibvirtConfigGuestPCIeExpanderBusController):
+                    if device.host_numa_node == host_numa:
+                        pcieExtender = device
+                        break
+            next_index = len(guest.devices)
+            pciePort = vconfig.LibvirtConfigGuestPCIeRootPortController()
+            pciePort.index = next_index
+            # TODO: does this work?
+            pciePort.target_bus = pcieExtender.index
+            guest.add_device(pciePort)
+
+            # TODO: does this work?
+            dev.target_bus = next_index
 
         return dev
 
@@ -6771,7 +6792,7 @@ class LibvirtDriver(driver.ComputeDriver):
                 usbhost.model = 'none'
         guest.add_device(usbhost)
 
-    def _guest_add_pcie_root_ports(self, guest):
+    def _guest_add_pcie_root_ports(self, guest : vconfig.LibvirtConfigGuest):
         """Add PCI Express root ports.
 
         PCI Express machine can have as many PCIe devices as it has
@@ -6780,9 +6801,27 @@ class LibvirtDriver(driver.ComputeDriver):
         If we want to have more PCIe slots for hotplug then we need to create
         whole PCIe structure (libvirt limitation).
         """
-
+        # this is index 0
         pcieroot = vconfig.LibvirtConfigGuestPCIeRootController()
+        pcieroot.index = 0
         guest.add_device(pcieroot)
+
+        # TODO(johngarbutt): add a pcie-expander-bus for each NUMA node?
+        # such that we can add a custom pcie-root-port for each PCI passthrough
+        # device, to ensure it is attached to the correct NUMA
+        if guest.numatune and guest.numatune.memnodes:
+            guest_cell_id_to_node_cell = {}
+            for tnode in guest.numatune.memnodes:
+                guest_cell_id_to_node_cell[tnode.cell_id] = tnode.nodeset[0]
+            for guest_cell, node_cell in guest_cell_id_to_node_cell.items():
+                pcieExp = vconfig.LibvirtConfigGuestPCIeExpanderBusController()
+                pcieExp.target_numa_node = int(guest_cell)
+                pcieExp.index = int(guest_cell) + 1
+                # needs to match the index of the pcieroot above
+                pcieExp.target_bus = 0
+                # need this to find the correct index later!
+                pcieExp.host_numa_node = node_cell
+                guest.add_device(pcieExp)
 
         for x in range(0, CONF.libvirt.num_pcie_ports):
             pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
@@ -6817,10 +6856,17 @@ class LibvirtDriver(driver.ComputeDriver):
         # Add PCIe root port controllers for PCI Express machines
         # but only if their amount is configured
 
-        if not CONF.libvirt.num_pcie_ports:
-            return False
-        if (caps.host.cpu.arch == fields.Architecture.AARCH64 and
-                guest.os_mach_type.startswith('virt')):
+        # TODO we need if for NUMA too!
+        #if not CONF.libvirt.num_pcie_ports:
+        #    return False
+
+        # Only certain architectures and machine types can handle PCIe ports;
+        # the latter will be handled by libvirt.utils.get_machine_type
+
+        if (
+            caps.host.cpu.arch == fields.Architecture.AARCH64 and
+            guest.os_mach_type.startswith('virt')
+        ):
             return True
         if (caps.host.cpu.arch == fields.Architecture.X86_64 and
                 guest.os_mach_type is not None and
@@ -7139,7 +7185,7 @@ class LibvirtDriver(driver.ComputeDriver):
         if CONF.libvirt.virt_type in ('qemu', 'kvm'):
             # Get all generic PCI devices (non-SR-IOV).
             for pci_dev in pci_manager.get_instance_pci_devs(instance):
-                guest.add_device(self._get_guest_pci_device(pci_dev))
+                guest.add_device(self._get_guest_pci_device(guest, pci_dev))
         else:
             # PCI devices is only supported for QEMU/KVM hypervisor
             if pci_manager.get_instance_pci_devs(instance, 'all'):
