@@ -5595,6 +5595,8 @@ class LibvirtDriver(driver.ComputeDriver):
         # TODO(johngarbutt): add in NUMA?!
         # FIXME(johngarbutt) although we need to make the remove case work too!!!
         host_numa = pci_device.numa_node
+        LOG.debug(f"PCI device host numa: {host_numa}")
+        LOG.debug(f"Guest info: {guest.numatune}")
         # check we have numa in use
         if host_numa is not None and guest.numatune and guest.numatune.memnodes:
             pcieExtender = None
@@ -5607,11 +5609,13 @@ class LibvirtDriver(driver.ComputeDriver):
             pciePort = vconfig.LibvirtConfigGuestPCIeRootPortController()
             pciePort.index = next_index
             # TODO: does this work?
-            pciePort.target_bus = pcieExtender.index
-            guest.add_device(pciePort)
+            LOG.debug(f"looking for pciex {pcieExtender}")
+            if pcieExtender:
+                pciePort.target_bus = pcieExtender.index
+                guest.add_device(pciePort)
 
-            # TODO: does this work?
-            dev.target_bus = next_index
+                # TODO: does this work?
+                dev.target_bus = next_index
 
         return dev
 
@@ -6809,6 +6813,7 @@ class LibvirtDriver(driver.ComputeDriver):
         # TODO(johngarbutt): add a pcie-expander-bus for each NUMA node?
         # such that we can add a custom pcie-root-port for each PCI passthrough
         # device, to ensure it is attached to the correct NUMA
+        LOG.debug(f"Looking for guest numatune: {guest.numatune}")
         if guest.numatune and guest.numatune.memnodes:
             guest_cell_id_to_node_cell = {}
             for tnode in guest.numatune.memnodes:
