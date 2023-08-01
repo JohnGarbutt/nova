@@ -6910,6 +6910,7 @@ class LibvirtDriver(driver.ComputeDriver):
         guest.cpuset = guest_numa_config.cpuset
         guest.cputune = guest_numa_config.cputune
         guest.numatune = guest_numa_config.numatune
+        LOG.debug(f"setup guest numa cpus: {guest.cputune} numatune: {guest.numatune}")
 
         guest.membacking = self._get_guest_memory_backing_config(
             instance.numa_topology,
@@ -11841,6 +11842,8 @@ class LibvirtDriver(driver.ComputeDriver):
         if vlan:
             device.vlan = int(vlan)
         device.vf_trusted = trusted_by_mac.get(vif.address, False)
+        LOG.debug(f"setup vif pci device: {device} for {dev}")
+        # TODO: what about NUMA here?
         return device
 
     def _build_disk_metadata(self, dev, tagged_bdms):
