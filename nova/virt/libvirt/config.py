@@ -2173,7 +2173,7 @@ class LibvirtConfigGuestPCIeRootPortController(LibvirtConfigGuestController):
 class LibvirtConfigGuestPCIeExpanderBusController(LibvirtConfigGuestController):
 
     def __init__(self, **kwargs):
-        super(LibvirtConfigGuestPCIeRootPortController, self).\
+        super(LibvirtConfigGuestPCIeExpanderBusController, self).\
                 __init__(**kwargs)
         self.type = 'pci'
         self.model = 'pcie-expander-bus'
