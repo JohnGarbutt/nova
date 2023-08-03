@@ -6831,7 +6831,7 @@ class LibvirtDriver(driver.ComputeDriver):
 
                 # TODO: only works with 1 numa and 1 device!!
                 pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
-                pcierootport.index = 3
+                pcierootport.index = 2
                 pcierootport.target_bus = pcieExp.index
                 guest.add_device(pcierootport)
 
