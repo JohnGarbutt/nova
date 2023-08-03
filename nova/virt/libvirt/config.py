@@ -1833,14 +1833,12 @@ class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
             dev.append(source_elem)
 
             # TODO: target the correct numa bus
-            target_elem = etree.Element("target")
             addr_elem = etree.Element("address", type='pci')
             addr_elem.set("domain", "0x0")
             addr_elem.set("bus", "0x02") # TODO make this dynamic!
             addr_elem.set("slot", "0x0")
             addr_elem.set("function", "0x0")
-            target_elem.append(addr_elem)
-            dev.append(target_elem)
+            dev.append(addr_elem)
 
         elif self.net_type == "vhostuser":
             dev.append(etree.Element("source", type=self.vhostuser_type,
@@ -2184,14 +2182,12 @@ class LibvirtConfigGuestPCIeRootPortController(LibvirtConfigGuestController):
         dev = super(LibvirtConfigGuestPCIeRootPortController, self).format_dom()
 
         if self.target_bus is not None:
-            target_elem = etree.Element("target")
             addr_elem = etree.Element("address", type='pci')
             addr_elem.set("domain", "0x0")
-            addr_elem.set("bus", f"0x{self.target_bus}")
+            addr_elem.set("bus", f"0x0{self.target_bus}")
             addr_elem.set("slot", "0x0")
             addr_elem.set("function", "0x0")
-            target_elem.append(addr_elem)
-            dev.append(target_elem)
+            dev.append(addr_elem)
 
         return dev
 
