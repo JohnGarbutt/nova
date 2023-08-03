@@ -1838,7 +1838,7 @@ class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
             addr_elem.set("bus", "0x02") # TODO make this dynamic!
             addr_elem.set("slot", "0x0")
             addr_elem.set("function", "0x0")
-            #dev.append(addr_elem)
+            dev.append(addr_elem)
 
         elif self.net_type == "vhostuser":
             dev.append(etree.Element("source", type=self.vhostuser_type,
