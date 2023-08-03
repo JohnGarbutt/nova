@@ -2188,9 +2188,9 @@ class LibvirtConfigGuestPCIeExpanderBusController(LibvirtConfigGuestController):
     def format_dom(self):
         dev = super(LibvirtConfigGuestPCIeExpanderBusController, self).format_dom()
 
-        if self.target_numa_node:
+        if self.target_numa_node is not None:
             target = etree.Element("target")
-            node = etree.Element("node")
+            node = self._text_node("node", str(self.target_numa_node))
             target.append(node)
             dev.append(target)
 
