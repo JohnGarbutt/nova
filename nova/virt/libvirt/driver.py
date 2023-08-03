@@ -6817,7 +6817,8 @@ class LibvirtDriver(driver.ComputeDriver):
         if guest.numatune and guest.numatune.memnodes:
             guest_cell_id_to_node_cell = {}
             for tnode in guest.numatune.memnodes:
-                guest_cell_id_to_node_cell[tnode.cell_id] = tnode.nodeset[0]
+                guest_cell_id_to_node_cell[tnode.cellid] = tnode.nodeset[0]
+            LOG.debug(f"Found some cell mappings: {guest_cell_id_to_node_cell}")
             for guest_cell, node_cell in guest_cell_id_to_node_cell.items():
                 pcieExp = vconfig.LibvirtConfigGuestPCIeExpanderBusController()
                 pcieExp.target_numa_node = int(guest_cell)
@@ -6910,7 +6911,7 @@ class LibvirtDriver(driver.ComputeDriver):
         guest.cpuset = guest_numa_config.cpuset
         guest.cputune = guest_numa_config.cputune
         guest.numatune = guest_numa_config.numatune
-        LOG.debug(f"setup guest numa cpus: {guest.cputune} numatune: {guest.numatune}")
+        LOG.debug(f"setup guest numa cpus: {guest.cpuset} numatune: {guest.numatune}")
 
         guest.membacking = self._get_guest_memory_backing_config(
             instance.numa_topology,
