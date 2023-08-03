@@ -6829,6 +6829,12 @@ class LibvirtDriver(driver.ComputeDriver):
                 pcieExp.host_numa_node = node_cell
                 guest.add_device(pcieExp)
 
+                # TODO: only works with 1 numa and 1 device!!
+                pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
+                pcierootport.index = 3
+                pcierootport.target_bus = pcieExp.index
+                guest.add_device(pcierootport)
+
         for x in range(0, CONF.libvirt.num_pcie_ports):
             pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
             guest.add_device(pcierootport)
