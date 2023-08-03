@@ -6813,6 +6813,7 @@ class LibvirtDriver(driver.ComputeDriver):
         # TODO(johngarbutt): add a pcie-expander-bus for each NUMA node?
         # such that we can add a custom pcie-root-port for each PCI passthrough
         # device, to ensure it is attached to the correct NUMA
+        return
         LOG.debug(f"Looking for guest numatune: {guest.numatune}")
         if guest.numatune and guest.numatune.memnodes:
             guest_cell_id_to_node_cell = {}
