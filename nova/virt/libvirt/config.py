@@ -1831,6 +1831,15 @@ class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
             addr_elem.set("function", "0x%s" % (func))
             source_elem.append(addr_elem)
             dev.append(source_elem)
+
+            # TODO: target the correct numa bus
+            addr_elem = etree.Element("address", type='pci')
+            addr_elem.set("domain", "0x0")
+            addr_elem.set("bus", "0x02") # TODO make this dynamic!
+            addr_elem.set("slot", "0x0")
+            addr_elem.set("function", "0x0")
+            dev.append(addr_elem)
+
         elif self.net_type == "vhostuser":
             dev.append(etree.Element("source", type=self.vhostuser_type,
                                      mode=self.vhostuser_mode,
@@ -2164,6 +2173,51 @@ class LibvirtConfigGuestPCIeRootPortController(LibvirtConfigGuestController):
                 __init__(**kwargs)
         self.type = 'pci'
         self.model = 'pcie-root-port'
+        # TODO: also need at least the address bus to match the LibvirtConfigGuestPCIeExpanderBusController index
+        # e.g. <address type='pci' domain='0x0000' bus='<>' slot='??' function='0x0'/>
+        # but empty when not numa aware
+        self.target_bus = None
+
+    def format_dom(self):
+        dev = super(LibvirtConfigGuestPCIeRootPortController, self).format_dom()
+
+        if self.target_bus is not None:
+            addr_elem = etree.Element("address", type='pci')
+            addr_elem.set("domain", "0x0")
+            addr_elem.set("bus", f"0x0{self.target_bus}")
+            addr_elem.set("slot", "0x0")
+            addr_elem.set("function", "0x0")
+            dev.append(addr_elem)
+
+        return dev
+
+
+class LibvirtConfigGuestPCIeExpanderBusController(LibvirtConfigGuestController):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestPCIeExpanderBusController, self).\
+                __init__(**kwargs)
+        self.type = 'pci'
+        self.model = 'pcie-expander-bus'
+        # TODO: need to add  <target><node>0</node></target>
+        self.target_numa_node = None
+        # TODO: also need at least the address bus to match the PCIeRootController
+        # e.g. <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+        # maybe slot == target_numa_node ?
+        self.target_bus = None
+        self.host_numa_node = None
+
+    def format_dom(self):
+        dev = super(LibvirtConfigGuestPCIeExpanderBusController, self).format_dom()
+
+        if self.target_numa_node is not None:
+            target = etree.Element("target")
+            node = self._text_node("node", str(self.target_numa_node))
+            target.append(node)
+            dev.append(target)
+
+        # TODO: add target_bus?
+        return dev
 
 
 class LibvirtConfigGuestHostdev(LibvirtConfigGuestDevice):
@@ -2207,6 +2261,8 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
 
         self.alias = None
 
+        self.target_bus = ""
+
     def __eq__(self, other):
         if not isinstance(other, LibvirtConfigGuestHostdevPCI):
             return False
@@ -2233,6 +2289,7 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
                                    else '0x' + self.function)
         source = etree.Element("source")
         source.append(address)
+        # TODO: add target_bus?
         dev.append(source)
         return dev
 
