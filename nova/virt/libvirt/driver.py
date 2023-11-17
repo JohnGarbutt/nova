@@ -5740,6 +5740,9 @@ class LibvirtDriver(driver.ComputeDriver):
         dev.domain, dev.bus, dev.slot, dev.function = dbsf
         self._set_managed_mode(dev)
 
+        # TODO(johngarbutt): only add for q35 and find guest numa!
+        dev.guest_numa = pci_device.numa_node
+
         return dev
 
     def _get_guest_config_meta(self, instance, network_info):
@@ -6960,9 +6963,38 @@ class LibvirtDriver(driver.ComputeDriver):
         pcieroot = vconfig.LibvirtConfigGuestPCIeRootController()
         guest.add_device(pcieroot)
 
+        # TODO(johngarbutt): needs to be called more often than just here!
+        self._guest_add_pcie_numa_controllers(guest)
+
         for x in range(0, CONF.libvirt.num_pcie_ports):
             pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
             guest.add_device(pcierootport)
+
+    def _guest_add_pcie_numa_controllers(self, guest):
+        if guest.numatune and guest.numatune.memnodes:
+            guest_cell_id_to_node_cell = {}
+            for tnode in guest.numatune.memnodes:
+                guest_cell_id_to_node_cell[tnode.cellid] = tnode.nodeset[0]
+            LOG.debug(f"Found some cell mappings: {guest_cell_id_to_node_cell}")
+            pci_device_index = 1
+            for guest_cell, node_cell in guest_cell_id_to_node_cell.items():
+                pcieExp = vconfig.LibvirtConfigGuestPCIeExpanderBusController()
+                pcieExp.target_numa_node = int(guest_cell)
+                pcieExp.index = int(guest_cell) + 1
+                pci_device_index += 1
+                # needs to match the index of the pcieroot above
+                pcieExp.target_bus = 0
+                # need this to find the correct index later!
+                pcieExp.host_numa_node = node_cell
+                guest.add_device(pcieExp)
+            for guest_cell, node_cell in guest_cell_id_to_node_cell.items():
+                # TODO: only works for 1 device!!
+                pcierootport = vconfig.LibvirtConfigGuestPCIeRootPortController()
+                pcierootport.index = int(guest_cell) + 1
+                pcierootport.target_bus = pci_device_index
+                # need to set the address here!
+                pci_device_index += 1
+                guest.add_device(pcierootport)
 
     def _guest_needs_pcie(self, guest):
         """Check for prerequisites for adding PCIe root port
