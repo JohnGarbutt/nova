@@ -3187,6 +3187,144 @@ class PCIServersWithRequiredNUMATest(PCIServersWithPreferredNUMATest):
             "compute1", **compute1_placement_pci_view)
         self.assert_no_pci_healing("compute1")
 
+class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
+
+    ALIAS_NAME = 'a1'
+    PCI_ALIAS = [jsonutils.dumps(
+        {
+            'vendor_id': fakelibvirt.PCI_VEND_ID,
+            'product_id': fakelibvirt.PCI_PROD_ID,
+            'name': ALIAS_NAME,
+            'device_type': fields.PciDeviceType.STANDARD,
+            'numa_policy': fields.PCINUMAAffinityPolicy.REQUIRED,
+        }
+    )]
+    expected_state = 'ERROR'
+
+    def setUp(self):
+        super().setUp()
+        self.useFixture(
+            fixtures.MockPatch(
+                'nova.pci.utils.is_physical_function', return_value=False
+            )
+        )
+
+    def test_create_server_not_q35(self):
+        pci_info = fakelibvirt.HostPCIDevicesInfo(num_pci=2)
+        device_spec = self._to_list_of_json_str(
+            [
+                {
+                    'vendor_id': fakelibvirt.PCI_VEND_ID,
+                    'product_id': fakelibvirt.PCI_PROD_ID,
+                    "address": "0000:81:00.0",
+                    "traits": "green",
+                },
+                {
+                    'vendor_id': fakelibvirt.PCI_VEND_ID,
+                    'product_id': fakelibvirt.PCI_PROD_ID,
+                    "address": "0000:81:01.0",
+                    "traits": "red",
+                },
+            ]
+        )
+        self.flags(group='pci', device_spec=device_spec)
+        # both numa 0 and numa 1 has 4 PCPUs
+        self.flags(cpu_dedicated_set='0-7', group='compute')
+        host_info = fakelibvirt.HostInfo(cpu_nodes=1, cpu_sockets=2,
+                                         cpu_cores=2, cpu_threads=2)
+        self.start_compute(pci_info=pci_info, host_info=host_info)
+
+        pci_alias = {
+            "resource_class": self.PCI_RC,
+            # this means only 81.00 will match in placement which is on numa 0
+            "traits": "red",
+            "name": "pci-dev",
+            # this forces the scheduler to only accept a solution where the
+            # PCI device is on the same numa node as the pinned CPUs
+            'numa_policy': fields.PCINUMAAffinityPolicy.REQUIRED,
+        }
+        self.flags(
+            group="pci",
+            alias=self._to_list_of_json_str([pci_alias]),
+        )
+
+        orig_create = nova.virt.libvirt.guest.Guest.create
+
+        def fake_create(cls, xml, host):
+            # TODO(johngarbutt): remove debug logging!
+            LOG.error(xml)
+            tree = etree.fromstring(xml)
+            elem = tree.find('./devices')
+
+            expected = """\
+<devices>
+    <disk type="file" device="disk">
+      <driver type="raw" cache="none"/>
+      <source file="dummy"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <disk type="file" device="disk">
+      <driver type="raw" cache="none"/>
+      <source file="dummy"/>
+      <target dev="vdb" bus="virtio"/>
+    </disk>
+    <interface type="ethernet">
+      <mac address="00:0c:29:0d:11:74"/>
+      <model type="virtio"/>
+      <mtu size="1450"/>
+      <target dev="tap88dae9fa-0d"/>
+    </interface>
+    <serial type="pty">
+      <log file="dummy"/>
+    </serial>
+    <graphics type="vnc" autoport="yes" listen="127.0.0.1"/>
+    <video>
+      <model type="virtio"/>
+    </video>
+    <input type="tablet" bus="usb"/>
+    <rng model="virtio">
+      <backend model="random">/dev/urandom</backend>
+    </rng>
+    <controller type="usb" index="0"/>
+    <hostdev mode="subsystem" type="pci" managed="yes">
+      <source>
+        <address domain="0x0000" bus="0x81" slot="0x01" function="0x0"/>
+      </source>
+    </hostdev>
+    <memballoon model="virtio">
+      <stats period="10"/>
+    </memballoon>
+  </devices>
+"""
+            actual = etree.tostring(elem, encoding='unicode')
+            import re
+            actual = re.sub('file=".*"', 'file="dummy"', actual)
+            self.assertEqual(expected, actual)
+
+            return orig_create(xml, host)
+
+        self.stub_out(
+            'nova.virt.libvirt.guest.Guest.create',
+            fake_create,
+        )
+
+        # Ask for dedicated CPUs, that can only be fulfilled on numa 1.
+        # And ask for a PCI alias that can only be fulfilled on numa 0 due to
+        # trait request.
+        # We expect that this makes the scheduling fail.
+        extra_spec = {
+            "hw:cpu_policy": "dedicated",
+            "pci_passthrough:alias": "pci-dev:1",
+            "hw:numa_nodes": "2",
+            "hw:cpu_sockets": "2",
+            "hw:cpu_cores": "2",
+            "hw:cpu_threads": "2",
+            "hw:cpu_thread_policy": "require",
+        }
+        flavor_id = self._create_flavor(extra_spec=extra_spec, vcpu=8)
+        server = self._create_server(
+            flavor_id=flavor_id, expected_state="ACTIVE")
+
     def test_create_server_with_pci_hostdev_and_numa_placement_success(self):
         # fakelibvirt will simulate the devices:
         # * one type-PCI in 81.00 on numa 0
@@ -3259,13 +3397,56 @@ class PCIServersWithRequiredNUMATest(PCIServersWithPreferredNUMATest):
             # TODO(johngarbutt): remove debug logging!
             LOG.error(xml)
             tree = etree.fromstring(xml)
-            elem = tree.find('./devices/hostdev/source/address')
+            elem = tree.find('./devices')
 
-            # compare address
-            expected = ('0x81', '0x01', '0x0')
-            actual = (
-                elem.get('bus'), elem.get('slot'), elem.get('function'),
-            )
+            expected = """\
+<devices>
+    <disk type="file" device="disk">
+      <driver type="raw" cache="none"/>
+      <source file="dummy"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <disk type="file" device="disk">
+      <driver type="raw" cache="none"/>
+      <source file="dummy"/>
+      <target dev="vdb" bus="virtio"/>
+    </disk>
+    <interface type="ethernet">
+      <mac address="00:0c:29:0d:11:74"/>
+      <model type="virtio"/>
+      <mtu size="1450"/>
+      <target dev="tap88dae9fa-0d"/>
+    </interface>
+    <serial type="pty">
+      <log file="dummy"/>
+    </serial>
+    <graphics type="vnc" autoport="yes" listen="127.0.0.1"/>
+    <video>
+      <model type="virtio"/>
+    </video>
+    <input type="tablet" bus="usb"/>
+    <rng model="virtio">
+      <backend model="random">/dev/urandom</backend>
+    </rng>
+    <controller type="pci" model="pcie-root"/>
+    <controller type="pci" model="pcie-root-port"/>
+    <controller type="pci" model="pcie-root-port"/>
+    <controller type="pci" model="pcie-root-port"/>
+    <controller type="pci" model="pcie-root-port"/>
+    <controller type="usb" index="0"/>
+    <hostdev mode="subsystem" type="pci" managed="yes">
+      <source>
+        <address domain="0x0000" bus="0x81" slot="0x01" function="0x0"/>
+      </source>
+    </hostdev>
+    <memballoon model="virtio">
+      <stats period="10"/>
+    </memballoon>
+  </devices>
+"""
+            actual = etree.tostring(elem, encoding='unicode')
+            import re
+            actual = re.sub('file=".*"', 'file="dummy"', actual)
             self.assertEqual(expected, actual)
 
             return orig_create(xml, host)
@@ -3306,8 +3487,7 @@ class PCIServersWithRequiredNUMATest(PCIServersWithPreferredNUMATest):
         self.assertEqual(2, len(inst.numa_topology.cells))
         self.assertEqual(inst.vcpu_model.topology.sockets, 2)
         self.assertEqual(inst.vcpu_model.topology.cores, 2)
-        # TODO(johngarbutt) why only one thread??
-        self.assertEqual(inst.vcpu_model.topology.threads, 1)
+        self.assertEqual(inst.vcpu_model.topology.threads, 2)
 
 
 @ddt.ddt
