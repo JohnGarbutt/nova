@@ -3187,7 +3187,7 @@ class PCIServersWithRequiredNUMATest(PCIServersWithPreferredNUMATest):
             "compute1", **compute1_placement_pci_view)
         self.assert_no_pci_healing("compute1")
 
-class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
+class PCINUMAPassthrough(_PCIServersTestBase):
 
     ALIAS_NAME = 'a1'
     PCI_ALIAS = [jsonutils.dumps(
@@ -3199,15 +3199,23 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
             'numa_policy': fields.PCINUMAAffinityPolicy.REQUIRED,
         }
     )]
-    expected_state = 'ERROR'
+    PCI_DEVICE_SPEC = [jsonutils.dumps(
+        {
+            'vendor_id': fakelibvirt.PCI_VEND_ID,
+            'product_id': fakelibvirt.PCI_PROD_ID,
+        }
+    )]
 
     def setUp(self):
         super().setUp()
+        self.flags(group="pci", report_in_placement=True)
+        self.flags(group='filter_scheduler', pci_in_placement=True)
         self.useFixture(
             fixtures.MockPatch(
                 'nova.pci.utils.is_physical_function', return_value=False
             )
         )
+        self.neutron = self.useFixture(base.LibvirtNeutronFixture(self))
 
     def test_create_server_not_q35(self):
         pci_info = fakelibvirt.HostPCIDevicesInfo(num_pci=2)
@@ -3224,6 +3232,11 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
                     'product_id': fakelibvirt.PCI_PROD_ID,
                     "address": "0000:81:01.0",
                     "traits": "red",
+                },
+                {
+                    'vendor_id': fakelibvirt.PCI_VEND_ID,
+                    'product_id': fakelibvirt.VF_PROD_ID,
+                    'physical_network': 'physnet4',
                 },
             ]
         )
@@ -3268,11 +3281,14 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
       <source file="dummy"/>
       <target dev="vdb" bus="virtio"/>
     </disk>
-    <interface type="ethernet">
-      <mac address="00:0c:29:0d:11:74"/>
-      <model type="virtio"/>
-      <mtu size="1450"/>
-      <target dev="tap88dae9fa-0d"/>
+    <interface type="hostdev" managed="yes">
+      <mac address="b5:bc:2e:e7:51:ee"/>
+      <source>
+        <address type="pci" domain="0x0000" bus="0x81" slot="0x02" function="0x4"/>
+      </source>
+      <vlan>
+        <tag id="42"/>
+      </vlan>
     </interface>
     <serial type="pty">
       <log file="dummy"/>
@@ -3322,8 +3338,15 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
             "hw:cpu_thread_policy": "require",
         }
         flavor_id = self._create_flavor(extra_spec=extra_spec, vcpu=8)
+
+        # create the port
+        self.neutron.create_port({'port': self.neutron.network_4_port_1})
+
         server = self._create_server(
-            flavor_id=flavor_id, expected_state="ACTIVE")
+            flavor_id=flavor_id, expected_state="ACTIVE",
+            networks=[
+                {'port': base.LibvirtNeutronFixture.network_4_port_1['id']},
+            ])
 
     def test_create_server_with_pci_hostdev_and_numa_placement_success(self):
         # fakelibvirt will simulate the devices:
@@ -3345,6 +3368,11 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
                     'product_id': fakelibvirt.PCI_PROD_ID,
                     "address": "0000:81:01.0",
                     "traits": "red",
+                },
+                {
+                    'vendor_id': fakelibvirt.PCI_VEND_ID,
+                    'product_id': fakelibvirt.VF_PROD_ID,
+                    'physical_network': 'physnet4',
                 },
             ]
         )
@@ -3411,11 +3439,14 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
       <source file="dummy"/>
       <target dev="vdb" bus="virtio"/>
     </disk>
-    <interface type="ethernet">
-      <mac address="00:0c:29:0d:11:74"/>
-      <model type="virtio"/>
-      <mtu size="1450"/>
-      <target dev="tap88dae9fa-0d"/>
+    <interface type="hostdev" managed="yes">
+      <mac address="b5:bc:2e:e7:51:ee"/>
+      <source>
+        <address type="pci" domain="0x0000" bus="0x81" slot="0x02" function="0x4"/>
+      </source>
+      <vlan>
+        <tag id="42"/>
+      </vlan>
     </interface>
     <serial type="pty">
       <log file="dummy"/>
@@ -3470,8 +3501,15 @@ class PCINUMAPassthrough(PCIServersWithPreferredNUMATest):
             "hw:cpu_thread_policy": "require",
         }
         flavor_id = self._create_flavor(extra_spec=extra_spec, vcpu=8)
+
+        # create the port
+        self.neutron.create_port({'port': self.neutron.network_4_port_1})
+
         server = self._create_server(
-            flavor_id=flavor_id, expected_state="ACTIVE")
+            flavor_id=flavor_id, expected_state="ACTIVE",
+            networks=[
+                {'port': base.LibvirtNeutronFixture.network_4_port_1['id']},
+            ])
 
         compute1_placement_pci_view["usages"][
             "0000:81:01.0"][self.PCI_RC] = 1
