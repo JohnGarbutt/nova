@@ -6230,10 +6230,8 @@ class LibvirtDriver(driver.ComputeDriver):
             hv.synic = True
             hv.reset = True
             hv.frequencies = True
-            hv.reenlightenment = True
             hv.tlbflush = True
             hv.ipi = True
-            hv.evmcs = True
 
             # NOTE(kosamara): Spoofing the vendor_id aims to allow the nvidia
             # driver to work on windows VMs. At the moment, the nvidia driver
@@ -10209,6 +10207,17 @@ class LibvirtDriver(driver.ComputeDriver):
                 migration_flags = self._block_migration_flags
             else:
                 migration_flags = self._live_migration_flags
+
+            # Note(siva_krishnan): live migrating paused instance fails
+            # when VIR_MIGRATE_POSTCOPY flag is set. It is unset here
+            # to permit live migration of paused instance.
+            if (
+                instance.vm_state == vm_states.PAUSED and
+                self._is_post_copy_enabled(migration_flags)
+            ):
+                LOG.debug('Post-copy flag unset because instance is paused.',
+                          instance=instance)
+                migration_flags ^= libvirt.VIR_MIGRATE_POSTCOPY
 
             if not migrate_data.serial_listen_addr:
                 # In this context we want to ensure that serial console is
