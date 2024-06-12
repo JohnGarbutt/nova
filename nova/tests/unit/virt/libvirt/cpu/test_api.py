@@ -182,11 +182,14 @@ class TestAPI(test.NoDBTestCase):
         api.power_down_all_dedicated_cpus()
         mock_offline.assert_not_called()
 
-    def test_power_down_all_dedicated_cpus_wrong_config(self):
+    @mock.patch.object(core, 'set_offline')
+    def test_power_down_all_dedicated_cpus_no_dedicated_cpus_configured(
+        self, mock_offline
+    ):
         self.flags(cpu_power_management=True, group='libvirt')
         self.flags(cpu_dedicated_set=None, group='compute')
-        self.assertRaises(exception.InvalidConfiguration,
-                          api.power_down_all_dedicated_cpus)
+        api.power_down_all_dedicated_cpus()
+        mock_offline.assert_not_called()
 
     @mock.patch.object(core, 'get_governor')
     @mock.patch.object(core, 'get_online')
@@ -211,25 +214,3 @@ class TestAPI(test.NoDBTestCase):
         mock_get_governor.side_effect = ('powersave', 'performance')
         self.assertRaises(exception.InvalidConfiguration,
                           api.validate_all_dedicated_cpus)
-
-    @mock.patch.object(core, 'get_governor')
-    @mock.patch.object(core, 'get_online')
-    @mock.patch.object(api.LOG, 'warning')
-    def test_validate_all_dedicated_cpus_for_cpu_state_warning(
-        self, mock_warning, mock_get_online, mock_get_governor):
-        self.flags(cpu_power_management=True, group='libvirt')
-        self.flags(cpu_dedicated_set='0-2', group='compute')
-        self.flags(cpu_power_management_strategy='cpu_state', group='libvirt')
-
-        mock_get_online.return_value = True
-        mock_get_governor.return_value = 'performance'
-
-        api.validate_all_dedicated_cpus()
-
-        # Make sure we skipped CPU0
-        mock_get_online.assert_has_calls([mock.call(1), mock.call(2)])
-
-        # Make sure we logged a warning about CPU0
-        mock_warning.assert_called_once_with(
-            'CPU0 is in cpu_dedicated_set, but it is not eligible for '
-            'state management and will be ignored')

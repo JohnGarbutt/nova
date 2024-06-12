@@ -4221,8 +4221,7 @@ class ComputeManager(manager.Manager):
         nova_attachments = []
         bdms_to_delete = []
         for bdm in bdms.objects:
-            if bdm.volume_id and bdm.source_type == 'volume' and \
-                bdm.destination_type == 'volume':
+            if bdm.volume_id and bdm.attachment_id:
                 try:
                     self.volume_api.attachment_get(context, bdm.attachment_id)
                 except exception.VolumeAttachmentNotFound:
@@ -7028,9 +7027,9 @@ class ComputeManager(manager.Manager):
 
         instance.power_state = current_power_state
         # NOTE(mriedem): The vm_state has to be set before updating the
-        # resource tracker, see vm_states.ALLOW_RESOURCE_REMOVAL. The host/node
-        # values cannot be nulled out until after updating the resource tracker
-        # though.
+        # resource tracker, see vm_states.allow_resource_removal(). The
+        # host/node values cannot be nulled out until after updating the
+        # resource tracker though.
         instance.vm_state = vm_states.SHELVED_OFFLOADED
         instance.task_state = None
         instance.save(expected_task_state=[task_states.SHELVING,

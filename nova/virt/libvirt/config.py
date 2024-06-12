@@ -1775,6 +1775,8 @@ class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
         self.device_addr = None
         self.mtu = None
         self.alias = None
+        # TODO(johngarbutt): how to get this set correctly?
+        self.guest_numa = 13
 
     def __eq__(self, other):
         if not isinstance(other, LibvirtConfigGuestInterface):
@@ -1857,6 +1859,15 @@ class LibvirtConfigGuestInterface(LibvirtConfigGuestDevice):
             addr_elem.set("function", "0x%s" % (func))
             source_elem.append(addr_elem)
             dev.append(source_elem)
+            # TODO(johngarbutt): target the correct numa bus, don't hard code!
+            # we should only do this when we have the NUMA pxb bus in place
+            if self.guest_numa:
+                addr_elem = etree.Element("address", type='pci')
+                addr_elem.set("domain", "0x0")
+                addr_elem.set("bus", f"0x0{self.guest_numa + 1}")
+                addr_elem.set("slot", "0x0")
+                addr_elem.set("function", "0x0")
+                dev.append(addr_elem)
         elif self.net_type == "vhostuser":
             dev.append(etree.Element("source", type=self.vhostuser_type,
                                      mode=self.vhostuser_mode,
@@ -2216,6 +2227,46 @@ class LibvirtConfigGuestPCIeRootPortController(LibvirtConfigGuestController):
                 __init__(**kwargs)
         self.type = 'pci'
         self.model = 'pcie-root-port'
+        # add address to target a specific NUMA pxb
+        self.address = None
+
+    def format_dom(self):
+        dev = super(
+            LibvirtConfigGuestPCIeRootPortController,
+            self
+        ).format_dom()
+        if self.address is not None:
+            # TODO(johngarbutt): how to convert to etree.element?
+            dev.append(self.address)
+        return dev
+
+
+class LibvirtConfigGuestPCIeExpanderBusController(LibvirtConfigGuestController):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestPCIeExpanderBusController, self).\
+                __init__(**kwargs)
+        self.type = 'pci'
+        self.model = 'pcie-expander-bus'
+        # TODO: need to add  <target><node>0</node></target>
+        self.target_numa_node = None
+        # TODO: also need at least the address bus to match the PCIeRootController
+        # e.g. <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+        # maybe slot == target_numa_node ?
+        self.target_bus = None
+        self.host_numa_node = None
+
+    def format_dom(self):
+        dev = super(LibvirtConfigGuestPCIeExpanderBusController, self).format_dom()
+
+        if self.target_numa_node is not None:
+            target = etree.Element("target")
+            node = self._text_node("node", str(self.target_numa_node))
+            target.append(node)
+            dev.append(target)
+
+        # TODO: add target_bus?
+        return dev
 
 
 class LibvirtConfigGuestHostdev(LibvirtConfigGuestDevice):
@@ -2263,6 +2314,8 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
 
         self.alias = None
 
+        self.guest_numa = None
+
     def __eq__(self, other):
         if not isinstance(other, LibvirtConfigGuestHostdevPCI):
             return False
@@ -2290,6 +2343,16 @@ class LibvirtConfigGuestHostdevPCI(LibvirtConfigGuestHostdev):
         source = etree.Element("source")
         source.append(address)
         dev.append(source)
+
+        # TODO(johngarbutt): target the correct numa bus, don't hard code!
+        # we should only do this when we have the NUMA pxb bus in place
+        if self.guest_numa:
+            addr_elem = etree.Element("address", type='pci')
+            addr_elem.set("domain", "0x0")
+            addr_elem.set("bus", f"0x0{self.guest_numa + 1}")
+            addr_elem.set("slot", "0x0")
+            addr_elem.set("function", "0x0")
+            dev.append(addr_elem)
         return dev
 
     def parse_dom(self, xmldoc):
