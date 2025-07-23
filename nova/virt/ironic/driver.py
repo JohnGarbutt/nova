@@ -168,6 +168,7 @@ class IronicDriver(virt_driver.ComputeDriver):
         "supports_stateless_firmware": False,
         "supports_virtio_fs": False,
         "supports_mem_backing_file": False,
+        "supports_migrations": False,
 
         # Image type support flags
         "supports_image_type_aki": False,
