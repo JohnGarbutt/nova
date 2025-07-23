@@ -1022,9 +1022,15 @@ class ResourceTracker(object):
                             'flavor', 'migration_context',
                             'resources'])
 
-        # Grab all in-progress migrations and error migrations:
-        migrations = objects.MigrationList.get_in_progress_and_error(
-            context, self.host, nodename)
+        if self.driver.capabilities.get('supports_migrations', True):
+            # Grab all in-progress migrations and error migrations:
+            migrations = objects.MigrationList.get_in_progress_and_error(
+                context, self.host, nodename)
+        else:
+            migrations = migration_obj.MigrationList(objects=[])
+            LOG.debug(
+                    "Driver does not support migrations "
+                    "so skipping migration steps")
 
         # Check for tracked instances with in-progress, incoming, but not
         # finished migrations. For those instance the migration context

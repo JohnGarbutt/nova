@@ -1255,6 +1255,44 @@ class TestUpdateAvailableResources(BaseTestCase):
         update_mock = self._update_available_resources(startup=True)
         update_mock.assert_called_once()
 
+    @mock.patch('nova.objects.InstancePCIRequests.get_by_instance',
+                return_value=objects.InstancePCIRequests(requests=[]))
+    @mock.patch('nova.objects.PciDeviceList.get_by_compute_node',
+                return_value=objects.PciDeviceList())
+    @mock.patch('nova.objects.ComputeNode.get_by_uuid')
+    @mock.patch('nova.objects.MigrationList.get_in_progress_and_error')
+    @mock.patch('nova.objects.InstanceList.get_by_host_and_node')
+    def test_instance_with_no_migration_support(self, get_mock, migr_mock,
+                                                    get_cn_mock, pci_mock,
+                                                    instance_pci_mock):
+        self._setup_rt()
+
+        get_mock.return_value = []
+        migr_mock.return_value = []
+        get_cn_mock.return_value = _COMPUTE_NODE_FIXTURES[0]
+
+        vd = self.driver_mock
+
+        def support_migrations_side_effect(key, default=None):
+            if key == "supports_migrations":
+                return False
+            return default
+
+        vd.capabilities.get.side_effect = support_migrations_side_effect
+        self._update_available_resources()
+
+        vd.get_available_resource.assert_called_once_with(_NODENAME)
+        get_mock.assert_called_once_with(mock.ANY, _HOSTNAME,
+                                         _NODENAME,
+                                         expected_attrs=[
+                                             'system_metadata',
+                                             'numa_topology',
+                                             'flavor',
+                                             'migration_context',
+                                             'resources'])
+        get_cn_mock.assert_called_once_with(mock.ANY, uuids.cn1)
+        migr_mock.assert_not_called()
+
     @mock.patch('nova.compute.utils.is_volume_backed_instance',
                 new=mock.Mock(return_value=False))
     @mock.patch('nova.objects.PciDeviceList.get_by_compute_node',
