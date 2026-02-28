@@ -23,6 +23,7 @@ import base64
 import gzip
 import shutil
 import tempfile
+import threading
 import time
 from urllib import parse as urlparse
 
@@ -194,6 +195,11 @@ class IronicDriver(virt_driver.ComputeDriver):
         self.servicegroup_api = servicegroup.API()
 
         self._ironic_connection = None
+        # Throttle parallel calls to Ironic API
+        # when there are a large number of current
+        # operations requested in parallel
+        self._max_api_call_semaphore = threading.Semaphore(
+            CONF.ironic.max_api_calls)
 
     @property
     def ironic_connection(self):
@@ -203,7 +209,8 @@ class IronicDriver(virt_driver.ComputeDriver):
             # up to handle this and raise VirtDriverNotReady as appropriate.
             self._ironic_connection = utils.get_sdk_adapter(
                 'baremetal', admin=True, check_service=True)
-        return self._ironic_connection
+        with self._max_api_call_semaphore:
+            return self._ironic_connection
 
     def _get_node(self, node_id):
         """Get a node by its UUID.
@@ -1284,6 +1291,8 @@ class IronicDriver(virt_driver.ComputeDriver):
         already provisioned node after required checks.
         """
         try:
+            # TODO: retry when we are over the max allowed
+            # number of nodes in clean (check max provision too!)
             self.ironic_connection.set_node_provision_state(
                 node.id,
                 'deleted',
@@ -1384,7 +1393,8 @@ class IronicDriver(virt_driver.ComputeDriver):
             # where we see an unrecognized state. See
             # https://bugs.launchpad.net/nova/+bug/2131960 for more
             # information.
-            self._unprovision(instance, node)
+            with self._unprovision_semaphore:
+                self._unprovision(instance, node)
         else:
             self._cleanup_deploy(node, instance, network_info)
 

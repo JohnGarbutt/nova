@@ -1833,6 +1833,26 @@ class IronicDriverTestCase(test.NoDBTestCase):
         self.assertFalse(mock_remove_instance_info.called)
         self.assertFalse(mock_cleanup_deploy.called)
 
+    @mock.patch.object(ironic_driver.IronicDriver, '_unprovision')
+    @mock.patch.object(
+        ironic_driver.IronicDriver, '_validate_instance_and_node')
+    def test_destroy_uses_unprovision_semaphore(self, mock_validate_inst,
+                                                mock_unprovision):
+        node_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        node = _get_cached_node(
+            driver='fake', id=node_id, provision_state=ironic_states.ACTIVE)
+        instance = fake_instance.fake_instance_obj(self.ctx, node=node_id)
+        mock_validate_inst.return_value = node
+
+        sem = mock.MagicMock()
+        self.driver._unprovision_semaphore = sem
+
+        self.driver.destroy(self.ctx, instance, 'foo', None)
+
+        sem.__enter__.assert_called_once_with()
+        sem.__exit__.assert_called_once_with(None, None, None)
+        mock_unprovision.assert_called_once_with(instance, node)
+
     @mock.patch.object(ironic_driver.IronicDriver,
                        '_validate_instance_and_node')
     @mock.patch.object(ironic_driver.IronicDriver,

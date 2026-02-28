@@ -89,6 +89,13 @@ Related options:
              'service. Note that setting this to the empty string (``""``) '
              'will match the default conductor group, and is different than '
              'leaving the option unset.'),
+    cfg.IntOpt(
+        'max_set_provision',
+        default=3,
+        min=1,
+        help='Limit number of concurrent calls set provision, '
+             'to help limit the load on Ironic API and Neutron API '
+             'during provision and deprovision.'),
     cfg.StrOpt(
         'shard',
         default=None,
