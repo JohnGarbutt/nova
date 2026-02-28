@@ -1334,15 +1334,32 @@ class IronicDriver(virt_driver.ComputeDriver):
         """This method is called from destroy() to unprovision
         already provisioned node after required checks.
         """
-        try:
-            self._set_node_provision_state(
-                node.id,
-                'deleted',
-            )
-        except Exception as e:
-            # if the node is already in a deprovisioned state, continue
-            if getattr(e, '__name__', None) != 'InstanceDeployFailure':
-                raise
+        # Add retry loop to handle possible conflict exceptions
+        # from Ironic when trying to unprovision, which can happen
+        # if the node is still being provisioned when delete is called.
+        retries = CONF.ironic.api_max_retries + 1
+        for attempt in range(1, retries + 1):
+            try:
+                self._set_node_provision_state(
+                    node.id,
+                    'deleted',
+                )
+                break
+            except Exception as e:
+                # if the node is already in a deprovisioned state, continue
+                if getattr(e, '__name__', None) == 'InstanceDeployFailure':
+                    break
+
+                is_conflict = isinstance(e, sdk_exc.ConflictException)
+                if not is_conflict or attempt >= retries:
+                    raise
+
+                LOG.debug(
+                    "Conflict requesting Ironic to unprovision node %(node)s;"
+                    " retrying %(attempt)s/%(retries)s.",
+                    {'node': node.id, 'attempt': attempt, 'retries': retries},
+                    instance=instance)
+                time.sleep(CONF.ironic.api_retry_interval)
 
         # using a dict because this is modified in the local method
         data = {'tries': 0}
@@ -1437,6 +1454,11 @@ class IronicDriver(virt_driver.ComputeDriver):
             # information.
             self._unprovision(instance, node)
         else:
+            LOG.warning("Ironic node %(node)s is in state %(state)s, which is not "
+                        "expected for an instance being destroyed. "
+                        "Skipping call to unprovision.",
+                        {'node': node.id, 'state': node.provision_state},
+                        instance=instance)
             self._cleanup_deploy(node, instance, network_info)
 
         LOG.info('Successfully unprovisioned Ironic node %s',

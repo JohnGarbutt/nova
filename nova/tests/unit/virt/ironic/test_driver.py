@@ -1992,6 +1992,31 @@ class IronicDriverTestCase(test.NoDBTestCase):
     def test__unprovision_cleanwait(self):
         self._test__unprovision_instance(state=ironic_states.CLEANWAIT)
 
+    @mock.patch.object(ironic_driver.time, 'sleep')
+    @mock.patch.object(ironic_driver.IronicDriver,
+                       '_validate_instance_and_node')
+    def test__unprovision_retry_on_conflict(self, mock_validate_inst,
+                                            mock_sleep):
+        node = _get_cached_node(driver='fake',
+                                provision_state=ironic_states.CLEANING)
+        instance = fake_instance.fake_instance_obj(self.ctx, node=node.id)
+        mock_validate_inst.return_value = node
+        self.mock_conn.set_node_provision_state.side_effect = [
+            sdk_exc.ConflictException(), None]
+
+        with mock.patch.object(self.driver, 'node_cache') as cache_mock:
+            self.driver._unprovision(instance, node)
+
+        expected_calls = [
+            mock.call(node.id, 'deleted'),
+            mock.call(node.id, 'deleted'),
+        ]
+        self.mock_conn.set_node_provision_state.assert_has_calls(
+            expected_calls)
+        mock_sleep.assert_called_once_with(CONF.ironic.api_retry_interval)
+        mock_validate_inst.assert_called_once_with(instance)
+        cache_mock.pop.assert_called_once_with(node.id, None)
+
     @mock.patch.object(ironic_driver.IronicDriver,
                        '_validate_instance_and_node')
     def test__unprovision_fail_max_retries(self, mock_validate_inst):
