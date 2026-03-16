@@ -1,0 +1,49 @@
+name: PR Unit Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - 'nscale/**'
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.10"
+            tox-env: py310
+          - python-version: "3.12"
+            tox-env: py312
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install bindep
+        run: pip install bindep
+
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install $(bindep -b test)
+
+      - name: Install tox
+        run: pip install tox
+
+      - name: Run pep8 checks
+        run: tox -e pep8
+
+      - name: Run unit tests
+        run: tox -e ${{ matrix.tox-env }}
