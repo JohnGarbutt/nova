@@ -3710,3 +3710,12 @@ class IronicDriverConsoleTestCase(test.NoDBTestCase):
         self.assertGreater(self.mock_conn.get_node_console.call_count, 1)
         self.assertEqual(1, self.mock_conn.enable_node_console.call_count)
         self.assertEqual(1, self.mock_conn.disable_node_console.call_count)
+
+    @mock.patch.object(ironic_driver.IronicDriver, 'list_instance_uuids')
+    def test_get_num_instances(self, mock_list_instance_uuids):
+        mock_list_instance_uuids.return_value = ['uuid1', 'uuid2', 'uuid3']
+
+        result = self.driver.get_num_instances()
+
+        self.assertEqual(result, 3)
+        mock_list_instance_uuids.assert_called_once_with()
