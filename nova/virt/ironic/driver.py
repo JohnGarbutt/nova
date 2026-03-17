@@ -20,6 +20,7 @@ bare metal resources.
 """
 
 import base64
+import eventlet
 import gzip
 import shutil
 import tempfile
@@ -39,6 +40,7 @@ from nova.api.metadata import base as instance_metadata
 from nova import block_device
 from nova.compute import power_state
 from nova.compute import task_states
+from nova.compute import utils as compute_utils
 from nova.compute import vm_states
 import nova.conf
 from nova.console import type as console_type
@@ -193,6 +195,14 @@ class IronicDriver(virt_driver.ComputeDriver):
         self.node_cache = {}
         self.node_cache_time = 0
         self.servicegroup_api = servicegroup.API()
+        max_concurrent_provision_state_requests = (
+            CONF.ironic.max_concurrent_provision_state_requests)
+        if max_concurrent_provision_state_requests > 0:
+            self._provision_state_semaphore = eventlet.semaphore.Semaphore(
+                max_concurrent_provision_state_requests)
+        else:
+            self._provision_state_semaphore = (
+                compute_utils.UnlimitedSemaphore())
 
         self._ironic_connection = None
 
@@ -213,6 +223,11 @@ class IronicDriver(virt_driver.ComputeDriver):
            actually UUID's.
         """
         return self.ironic_connection.get_node(node_id, fields=_NODE_FIELDS)
+
+    def _set_node_provision_state(self, node_id, provision_state, **kwargs):
+        with self._provision_state_semaphore:
+            self.ironic_connection.set_node_provision_state(
+                node_id, provision_state, **kwargs)
 
     def _validate_instance_and_node(self, instance):
         """Get the node associated with the instance.
@@ -1266,7 +1281,7 @@ class IronicDriver(virt_driver.ComputeDriver):
 
         # trigger the node deploy
         try:
-            self.ironic_connection.set_node_provision_state(
+            self._set_node_provision_state(
                 node_id,
                 ironic_states.ACTIVE,
                 config_drive=configdrive_value,
@@ -1304,7 +1319,7 @@ class IronicDriver(virt_driver.ComputeDriver):
         already provisioned node after required checks.
         """
         try:
-            self.ironic_connection.set_node_provision_state(
+            self._set_node_provision_state(
                 node.id,
                 'deleted',
             )
@@ -1802,7 +1817,7 @@ class IronicDriver(virt_driver.ComputeDriver):
 
         # Trigger the node rebuild/redeploy.
         try:
-            self.ironic_connection.set_node_provision_state(
+            self._set_node_provision_state(
                 node_id,
                 ironic_states.REBUILD,
                 config_drive=configdrive_value,
@@ -2326,7 +2341,7 @@ class IronicDriver(virt_driver.ComputeDriver):
                           reason=node.last_error)
 
         try:
-            self.ironic_connection.set_node_provision_state(
+            self._set_node_provision_state(
                 node_id,
                 ironic_states.RESCUE,
                 rescue_password=rescue_password,
@@ -2367,7 +2382,7 @@ class IronicDriver(virt_driver.ComputeDriver):
                           reason=node.last_error)
 
         try:
-            self.ironic_connection.set_node_provision_state(
+            self._set_node_provision_state(
                 node_id,
                 ironic_states.VERBS['unrescue'],
             )

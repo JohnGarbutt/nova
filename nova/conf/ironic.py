@@ -75,6 +75,16 @@ Related options:
         help='Timeout (seconds) to wait for node VNC console state '
              'changed. Set to 0 to disable timeout (not recommended in '
              'production environments).'),
+    cfg.IntOpt(
+        'max_concurrent_provision_state_requests',
+        default=3,
+        min=0,
+        help="""
+Maximum number of concurrent `set_node_provision_state` requests that the
+Nova Ironic driver will issue.
+
+Set to 0 to allow an unlimited number of concurrent requests.
+"""),
     cfg.StrOpt(
         'conductor_group',
         deprecated_name='partition_key',
