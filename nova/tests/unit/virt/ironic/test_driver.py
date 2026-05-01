@@ -1082,6 +1082,40 @@ class IronicDriverTestCase(test.NoDBTestCase):
         result = self.ptree.data(mock.sentinel.nodename).traits
         self.assertEqual(set(traits), result)
 
+    @mock.patch.object(ironic_driver.IronicDriver,
+                       '_node_resources_used', return_value=True)
+    @mock.patch.object(ironic_driver.IronicDriver,
+                       '_node_resources_unavailable', return_value=False)
+    @mock.patch.object(ironic_driver.IronicDriver, '_node_resource')
+    @mock.patch.object(ironic_driver.IronicDriver, '_node_from_cache')
+    def test_update_provider_tree_with_cpu_arch_traits(
+            self, mock_nfc, mock_nr, mock_res_unavail, mock_res_used):
+        mock_nr.return_value = {
+            'vcpus': 24,
+            'vcpus_used': 24,
+            'memory_mb': 1024,
+            'memory_mb_used': 1024,
+            'local_gb': 100,
+            'local_gb_used': 100,
+            'resource_class': 'iron-nfv',
+        }
+
+        for cpu_arch, trait in (
+                ('x86_64', 'HW_ARCH_X86_64'),
+                ('i386', 'HW_ARCH_I686'),
+                ('amd64', 'HW_ARCH_X86_64'),
+                ('aarch64', 'HW_ARCH_AARCH64')):
+            mock_nfc.return_value = _get_cached_node(
+                id=mock.sentinel.nodename,
+                properties={'cpu_arch': cpu_arch},
+                traits=['CUSTOM_FOO'])
+
+            self.driver.update_provider_tree(
+                self.ptree, mock.sentinel.nodename)
+
+            result = self.ptree.data(mock.sentinel.nodename).traits
+            self.assertEqual({'CUSTOM_FOO', trait}, result)
+
     @mock.patch.object(objects.InstanceList, 'get_uuids_by_host')
     @mock.patch.object(objects.ServiceList, 'get_all_computes_by_hv_type')
     @mock.patch.object(ironic_driver.IronicDriver, '_node_resource')
