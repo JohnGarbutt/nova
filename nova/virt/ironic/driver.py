@@ -27,6 +27,7 @@ import tempfile
 import time
 from urllib import parse as urlparse
 
+import os_traits as ot
 from openstack.baremetal.v1.node import PowerAction
 from openstack import exceptions as sdk_exc
 from openstack import utils as sdk_utils
@@ -107,6 +108,19 @@ def _get_nodes_supported_instances(cpu_arch=None):
     return [(cpu_arch,
              obj_fields.HVType.BAREMETAL,
              obj_fields.VMMode.HVM)]
+
+
+def _get_cpu_arch_traits(cpu_arch=None):
+    if not cpu_arch:
+        return []
+
+    try:
+        arch = obj_fields.Architecture.canonicalize(cpu_arch).upper()
+    except exception.InvalidArchitectureName:
+        return []
+
+    trait = 'HW_ARCH_' + arch
+    return [trait] if trait in ot.get_traits(prefix='HW_ARCH_') else []
 
 
 def _log_ironic_polling(what, node, instance):
@@ -988,7 +1002,9 @@ class IronicDriver(virt_driver.ComputeDriver):
         # TODO(efried): *Unset* (remove_traits) if "owned" by ironic virt but
         # not set on the node object, and *set* (add_traits) only those both
         # owned by ironic virt and set on the node object.
-        provider_tree.update_traits(nodename, node.traits)
+        traits = set(node.traits)
+        traits.update(_get_cpu_arch_traits(node.properties.get('cpu_arch')))
+        provider_tree.update_traits(nodename, traits)
 
     def get_available_resource(self, nodename):
         """Retrieve resource information.
