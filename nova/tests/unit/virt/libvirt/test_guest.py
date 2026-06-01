@@ -138,6 +138,19 @@ class GuestTestCase(test.NoDBTestCase):
             fakelibvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE |
             fakelibvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
 
+    def test_delete_configuration_with_keep_vtpm_true(self):
+        self.guest.delete_configuration(keep_vtpm=True)
+        self.domain.undefineFlags.assert_called_once_with(
+            fakelibvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE |
+            fakelibvirt.VIR_DOMAIN_UNDEFINE_NVRAM |
+            fakelibvirt.VIR_DOMAIN_UNDEFINE_KEEP_TPM)
+
+    def test_delete_configuration_keep_nvram(self):
+        self.guest.delete_configuration(keep_nvram=True)
+        self.domain.undefineFlags.assert_called_once_with(
+            fakelibvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE |
+            fakelibvirt.VIR_DOMAIN_UNDEFINE_KEEP_NVRAM)
+
     def test_delete_configuration_exception(self):
         self.domain.undefineFlags.side_effect = fakelibvirt.libvirtError(
             'oops')
@@ -337,6 +350,20 @@ class GuestTestCase(test.NoDBTestCase):
         self.assertEqual('vda', dev.target_dev)
 
         self.assertIsNone(self.guest.get_device_by_alias('nope'))
+
+    def test_get_device_by_alias_from_persistent_config(self):
+        with mock.patch.object(self.guest, 'get_all_devices') as mock_get_all:
+            mock_get_all.return_value = []
+
+            self.assertIsNone(self.guest.get_device_by_alias(
+                'qemu-disk1',
+                devtype=vconfig.LibvirtConfigGuestDisk,
+                from_persistent_config=True,
+            ))
+
+            mock_get_all.assert_called_once_with(
+                # check if we're querying the persistent config
+                vconfig.LibvirtConfigGuestDisk, True)
 
     def test_get_devices(self):
         xml = """

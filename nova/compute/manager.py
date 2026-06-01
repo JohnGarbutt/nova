@@ -72,6 +72,7 @@ from nova.compute import vm_states
 from nova import conductor
 import nova.conf
 import nova.context
+from nova import crypto
 from nova import exception
 from nova import exception_wrapper
 from nova.i18n import _
@@ -940,6 +941,9 @@ class ComputeManager(manager.Manager):
         self._clean_instance_console_tokens(context, instance)
         self._delete_scheduler_instance_info(context, instance.uuid)
 
+        # Delete the vTPM secret in the key manager service if needed.
+        crypto.delete_vtpm_secret(context, instance)
+
     def _validate_pinning_configuration(self, instances):
         if not self.driver.capabilities.get('supports_pcpus', False):
             return
@@ -1610,6 +1614,10 @@ class ComputeManager(manager.Manager):
             # flush any invalid configuration early, so we can kill the service
             # if the configuration is wrong.
             whitelist.Whitelist(CONF.pci.device_spec)
+
+        # NOTE(gibi): validate the [pci]alias config early to avoid late
+        # failures at instance lifecycle operations due to config errors.
+        pci_req_module.get_alias_from_config()
 
         nova.conf.neutron.register_dynamic_opts(CONF)
         # Even if only libvirt uses them, make it available for all drivers
