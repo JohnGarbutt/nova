@@ -16,6 +16,7 @@
 """Tests for the ironic driver."""
 
 import base64
+import eventlet
 from unittest import mock
 
 import fixtures
@@ -34,6 +35,7 @@ from nova import block_device
 from nova.compute import power_state as nova_states
 from nova.compute import provider_tree
 from nova.compute import task_states
+from nova.compute import utils as compute_utils
 from nova.compute import vm_states
 from nova.console import type as console_type
 from nova import context as nova_context
@@ -128,6 +130,27 @@ class IronicDriverTestCase(test.NoDBTestCase):
     def test_validate_driver_loading(self):
         self.assertIsInstance(self.driver, ironic_driver.IronicDriver)
 
+    def test_init_provision_state_semaphore_bounded(self):
+        self.flags(max_concurrent_provision_state_requests=3, group='ironic')
+
+        driver = ironic_driver.IronicDriver(None)
+
+        self.assertIsInstance(
+            driver._provision_state_semaphore,
+            eventlet.semaphore.Semaphore,
+        )
+        self.assertEqual(3, driver._provision_state_semaphore.balance)
+
+    def test_init_provision_state_semaphore_unlimited(self):
+        self.flags(max_concurrent_provision_state_requests=0, group='ironic')
+
+        driver = ironic_driver.IronicDriver(None)
+
+        self.assertIsInstance(
+            driver._provision_state_semaphore,
+            compute_utils.UnlimitedSemaphore,
+        )
+
     def test_driver_capabilities(self):
         self.assertFalse(self.driver.capabilities['has_imagecache'],
                          'Driver capabilities for \'has_imagecache\''
@@ -165,6 +188,20 @@ class IronicDriverTestCase(test.NoDBTestCase):
                           self.driver._get_node, node_id)
         self.mock_conn.get_node.assert_called_once_with(
             node_id, fields=ironic_driver._NODE_FIELDS)
+
+    def test__set_node_provision_state(self):
+        semaphore = mock.MagicMock()
+        semaphore.__enter__.return_value = None
+        semaphore.__exit__.return_value = None
+        self.driver._provision_state_semaphore = semaphore
+
+        self.driver._set_node_provision_state(
+            'node-uuid', ironic_states.ACTIVE, config_drive='configdrive')
+
+        semaphore.__enter__.assert_called_once_with()
+        semaphore.__exit__.assert_called_once()
+        self.mock_conn.set_node_provision_state.assert_called_once_with(
+            'node-uuid', ironic_states.ACTIVE, config_drive='configdrive')
 
     def test__validate_instance_and_node(self):
         node_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
