@@ -170,6 +170,7 @@ class IronicDriver(virt_driver.ComputeDriver):
     """Hypervisor driver for Ironic - bare metal provisioning."""
 
     validate_instance_vtpm_configuration = False
+    scoped_provider_tree_updates = True
 
     capabilities = {
         "has_imagecache": False,

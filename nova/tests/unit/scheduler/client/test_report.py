@@ -22,6 +22,7 @@ import os_resource_classes as orc
 from oslo_serialization import jsonutils
 from oslo_utils.fixture import uuidsentinel as uuids
 
+from nova.compute import provider_tree
 import nova.conf
 from nova import context
 from nova import exception
@@ -2669,6 +2670,40 @@ class TestProviderOperations(SchedulerReportClientTestCase):
                 global_request_id=None)
 
             self.ks_adap_mock.delete.reset_mock()
+
+    def test_update_from_provider_tree_scoped(self):
+        self.client._provider_tree.new_root(
+            'compute1', uuids.compute1, generation=1)
+        self.client._provider_tree.new_root(
+            'compute2', uuids.compute2, generation=1)
+
+        new_tree = provider_tree.ProviderTree()
+        new_tree.new_root('compute1', uuids.compute1, generation=1)
+        new_tree.new_root('compute2', uuids.compute2, generation=1)
+        new_tree.update_inventory(
+            uuids.compute1, {orc.VCPU: {'total': 1}})
+
+        with test.nested(
+            mock.patch.object(self.client, 'set_inventory_for_provider'),
+            mock.patch.object(self.client, 'set_aggregates_for_provider'),
+            mock.patch.object(self.client, 'set_traits_for_provider'),
+        ) as (
+            set_inventory_mock,
+            set_aggregates_mock,
+            set_traits_mock,
+        ):
+            self.client.update_from_provider_tree(
+                self.context, new_tree, provider_uuid=uuids.compute1)
+
+        set_inventory_mock.assert_called_once_with(
+            self.context, uuids.compute1,
+            new_tree.data(uuids.compute1).inventory)
+        set_aggregates_mock.assert_called_once_with(
+            self.context, uuids.compute1,
+            new_tree.data(uuids.compute1).aggregates)
+        set_traits_mock.assert_called_once_with(
+            self.context, uuids.compute1,
+            new_tree.data(uuids.compute1).traits)
 
     def test_set_aggregates_for_provider(self):
         aggs = [uuids.agg1, uuids.agg2]

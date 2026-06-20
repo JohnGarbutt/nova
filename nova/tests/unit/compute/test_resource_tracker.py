@@ -506,6 +506,7 @@ def setup_rt(hostname, virt_resources=_VIRT_DRIVER_AVAIL_RESOURCES):
     vd.update_provider_tree.side_effect = fake_upt
     vd.get_host_ip_addr.return_value = _NODENAME
     vd.rebalances_nodes = False
+    vd.scoped_provider_tree_updates = False
 
     with test.nested(
             mock.patch('nova.scheduler.client.query.SchedulerQueryClient',
@@ -1840,6 +1841,29 @@ class TestUpdateComputeNode(BaseTestCase):
         exp_inv[orc.DISK_GB]['reserved'] = 1
         self.assertEqual(exp_inv, ptree.data(new_compute.uuid).inventory)
         mock_sync_disabled.assert_called_once()
+
+    @mock.patch('nova.compute.resource_tracker.ResourceTracker.'
+                '_sync_compute_service_disabled_trait')
+    @mock.patch('nova.objects.ComputeNode.save')
+    def test_existing_node_update_provider_tree_scoped(
+            self, save_mock, mock_sync_disabled):
+        self._setup_rt()
+        self.driver_mock.scoped_provider_tree_updates = True
+
+        orig_compute = _COMPUTE_NODE_FIXTURES[0].obj_clone()
+        self.rt.compute_nodes[_NODENAME] = orig_compute
+        self.rt.old_resources[_NODENAME] = orig_compute
+        new_compute = orig_compute.obj_clone()
+
+        ptree = self._setup_ptree(orig_compute)
+
+        self.rt._update(mock.sentinel.ctx, new_compute)
+
+        self.rt.reportclient.update_from_provider_tree.assert_called_once_with(
+            mock.sentinel.ctx, ptree, allocations=None,
+            provider_uuid=new_compute.uuid)
+        mock_sync_disabled.assert_called_once()
+        save_mock.assert_not_called()
 
     @ddt.data(
         exc.ResourceProviderUpdateConflict(

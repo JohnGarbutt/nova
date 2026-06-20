@@ -1366,10 +1366,16 @@ class ResourceTracker(object):
             # update_provider_tree_for_pci did reshape, then we need to pass
             # allocs to update_from_provider_tree to hit placement's POST
             # /reshaper route.
+            allocations = allocs if driver_reshaped or pci_reshaped else None
+            update_kwargs = {}
+            if (self.driver.scoped_provider_tree_updates and
+                    allocations is None):
+                update_kwargs['provider_uuid'] = compute_node.uuid
             self.reportclient.update_from_provider_tree(
                 context,
                 prov_tree,
-                allocations=allocs if driver_reshaped or pci_reshaped else None
+                allocations=allocations,
+                **update_kwargs
             )
         except exception.InventoryInUse as e:
             # This means an inventory reconfiguration (e.g.: removing a parent
