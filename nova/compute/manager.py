@@ -1148,7 +1148,8 @@ class ComputeManager(manager.Manager):
                     instance=instance)
 
     def _validate_vtpm_configuration(self, instances):
-        if self.driver.capabilities.get('supports_vtpm', False):
+        if (self.driver.capabilities.get('supports_vtpm', False) or
+                not self.driver.validate_instance_vtpm_configuration):
             return
 
         for instance in instances:

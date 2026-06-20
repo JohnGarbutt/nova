@@ -169,6 +169,8 @@ def _check_peer_list():
 class IronicDriver(virt_driver.ComputeDriver):
     """Hypervisor driver for Ironic - bare metal provisioning."""
 
+    validate_instance_vtpm_configuration = False
+
     capabilities = {
         "has_imagecache": False,
         "supports_evacuate": False,

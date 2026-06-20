@@ -1803,6 +1803,23 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         """
         self._test__validate_vtpm_configuration(supports_vtpm=True)
 
+    def test__validate_vtpm_configuration_not_required(self):
+        """Test that the check is skipped if the driver does not require it."""
+        instance = objects.Instance(
+            self.context, uuid=uuids.instance, deleted=False)
+        instances = objects.InstanceList(objects=[instance])
+
+        with test.nested(
+            mock.patch.object(
+                self.compute.driver,
+                'validate_instance_vtpm_configuration',
+                False),
+            mock.patch.object(hardware, 'get_vtpm_constraint'),
+        ) as (_mock_validate, mock_get_vtpm):
+            self.compute._validate_vtpm_configuration(instances)
+
+        mock_get_vtpm.assert_not_called()
+
     def test__get_power_state_InstanceNotFound(self):
         instance = fake_instance.fake_instance_obj(
                 self.context,
