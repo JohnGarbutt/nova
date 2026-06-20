@@ -316,6 +316,10 @@ class ComputeDriver(object):
         "supports_image_type_ploop": False,
     }
 
+    # Whether ComputeManager should validate existing instances for vTPM
+    # requests on startup when the driver does not support Nova vTPM.
+    validate_instance_vtpm_configuration = True
+
     # Indicates if this driver will rebalance nodes among compute service
     # hosts. This is really here for ironic and should not be used by any
     # other driver.
