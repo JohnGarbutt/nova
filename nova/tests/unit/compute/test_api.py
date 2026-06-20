@@ -220,6 +220,24 @@ class _ComputeAPIUnitTestMixIn(object):
         list_obj.obj_reset_changes()
         return list_obj
 
+    @mock.patch('nova.scheduler.utils.build_filter_properties')
+    def test_create_strips_internal_scheduler_hints(self,
+                                                    mock_build_filter):
+        mock_build_filter.side_effect = (
+            test.TestingException('stop early'))
+        flavor = self._create_flavor()
+        self.assertRaises(
+            test.TestingException,
+            self.compute_api.create,
+            self.context, flavor, 'image_id',
+            scheduler_hints={
+                '_nova_check_type': 'rebuild',
+                '_nova_future': 'something',
+                'group': 'valid-group-uuid',
+            })
+        actual_hints = mock_build_filter.call_args[0][0]
+        self.assertEqual({'group': 'valid-group-uuid'}, actual_hints)
+
     @mock.patch(
         'nova.network.neutron.API.is_remote_managed_port',
         new=mock.Mock(return_value=False),
@@ -2172,6 +2190,7 @@ class _ComputeAPIUnitTestMixIn(object):
 
         if flavor_id_passed:
             mock_get_flavor.assert_called_once_with('new-flavor-id',
+                                                    ctxt=self.context,
                                                     read_deleted='no')
 
         if not (flavor_id_passed and same_flavor):
@@ -2380,7 +2399,9 @@ class _ComputeAPIUnitTestMixIn(object):
         self.assertRaises(exception.FlavorNotFound,
                           self.compute_api.resize, self.context,
                           fake_inst, flavor_id='flavor-id')
-        mock_get_flavor.assert_called_once_with('flavor-id', read_deleted='no')
+        mock_get_flavor.assert_called_once_with('flavor-id',
+                                                ctxt=self.context,
+                                                read_deleted='no')
         # Should never reach these.
         mock_count.assert_not_called()
         mock_limit.assert_not_called()
@@ -2413,7 +2434,8 @@ class _ComputeAPIUnitTestMixIn(object):
         self.assertRaises(exception.FlavorMemoryTooSmall,
                           self.compute_api.resize, self.context,
                           fake_inst, flavor_id=new_flavor.id)
-        mock_get_flavor.assert_called_once_with(200, read_deleted='no')
+        mock_get_flavor.assert_called_once_with(200, ctxt=self.context,
+                                                read_deleted='no')
         # Should never reach these.
         mock_count.assert_not_called()
         mock_limit.assert_not_called()
@@ -2441,7 +2463,9 @@ class _ComputeAPIUnitTestMixIn(object):
         self.assertRaises(exception.FlavorNotFound,
                           self.compute_api.resize, self.context,
                           fake_inst, flavor_id='flavor-id')
-        mock_get_flavor.assert_called_once_with('flavor-id', read_deleted='no')
+        mock_get_flavor.assert_called_once_with('flavor-id',
+                                                ctxt=self.context,
+                                                read_deleted='no')
         # Should never reach these.
         mock_count.assert_not_called()
         mock_limit.assert_not_called()
@@ -2540,7 +2564,9 @@ class _ComputeAPIUnitTestMixIn(object):
                           fake_inst, flavor_id='flavor-id')
 
         mock_save.assert_not_called()
-        mock_get_flavor.assert_called_once_with('flavor-id', read_deleted='no')
+        mock_get_flavor.assert_called_once_with('flavor-id',
+                                                ctxt=self.context,
+                                                read_deleted='no')
         mock_upsize.assert_called_once_with(test.MatchType(objects.Flavor),
                                             test.MatchType(objects.Flavor))
         # mock.ANY might be 'instances', 'cores', or 'ram'
@@ -2616,6 +2642,7 @@ class _ComputeAPIUnitTestMixIn(object):
             self.assertEqual('1, 512', e.kwargs['used'])
             self.assertEqual('1, 512', e.kwargs['allowed'])
             mock_get_flavor.assert_called_once_with('fake_flavor_id',
+                                                    ctxt=self.context,
                                                     read_deleted="no")
         else:
             self.fail("Exception not raised")
@@ -2642,6 +2669,7 @@ class _ComputeAPIUnitTestMixIn(object):
                           'fake_flavor_id')
 
         mock_get_flavor.assert_called_once_with('fake_flavor_id',
+                                                ctxt=self.context,
                                                 read_deleted="no")
         mock_enforce.assert_called_once_with(
             self.context, "fake", mock_get_flavor.return_value, False, 1, 1)
