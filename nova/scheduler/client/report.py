@@ -1340,12 +1340,16 @@ class SchedulerReportClient(object):
             LOG.exception('Reshape failed')
             raise exception.ReshapeFailed(error=e)
 
-    def update_from_provider_tree(self, context, new_tree, allocations=None):
+    def update_from_provider_tree(self, context, new_tree, allocations=None,
+                                  provider_uuid=None):
         """Flush changes from a specified ProviderTree back to placement.
 
         The specified ProviderTree is compared against the local cache.  Any
         changes are flushed back to the placement service.  Upon successful
-        completion, the local cache should reflect the specified ProviderTree.
+        completion, the local cache should reflect the specified ProviderTree,
+        or the scoped subtree if provider_uuid is specified. If provider_uuid
+        is specified for a non-reshape update, only that provider's subtree is
+        compared and flushed.
 
         This method is best-effort and not atomic.  When exceptions are raised,
         it is possible that some of the changes have been flushed back, leaving
@@ -1361,6 +1365,10 @@ class SchedulerReportClient(object):
                             comprehensive final picture of the allocations for
                             each consumer therein. A value of None indicates
                             that no reshape is being performed.
+        :param provider_uuid: Optional UUID of a provider whose subtree should
+                              be compared and flushed during non-reshape
+                              updates. Ignored during reshape, where the full
+                              tree is required.
         :raises: ResourceProviderUpdateConflict if a generation conflict was
                  encountered - i.e. we are attempting to update placement based
                  on a stale view of it.
@@ -1420,9 +1428,17 @@ class SchedulerReportClient(object):
         # Helper methods herein will be updating the local cache (this is
         # intentional) so we need to grab up front any data we need to operate
         # on in its "original" form.
+        def get_provider_uuids(tree, provider_uuid):
+            if provider_uuid is None:
+                return tree.get_provider_uuids()
+            if tree.exists(provider_uuid):
+                return tree.get_provider_uuids(provider_uuid)
+            return []
+
         old_tree = self._provider_tree
-        old_uuids = old_tree.get_provider_uuids()
-        new_uuids = new_tree.get_provider_uuids()
+        scoped_provider_uuid = provider_uuid if allocations is None else None
+        old_uuids = get_provider_uuids(old_tree, scoped_provider_uuid)
+        new_uuids = get_provider_uuids(new_tree, scoped_provider_uuid)
         uuids_to_add = set(new_uuids) - set(old_uuids)
         uuids_to_remove = set(old_uuids) - set(new_uuids)
 

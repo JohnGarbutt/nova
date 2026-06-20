@@ -353,6 +353,11 @@ class ComputeDriver(object):
     # requests on startup when the driver does not support Nova vTPM.
     validate_instance_vtpm_configuration = True
 
+    # Whether ResourceTracker can limit placement updates to the current
+    # provider subtree after update_provider_tree(). This is intended for
+    # drivers whose compute nodes are independent placement roots.
+    scoped_provider_tree_updates = False
+
     # Indicates if this driver will rebalance nodes among compute service
     # hosts. This is really here for ironic and should not be used by any
     # other driver.
