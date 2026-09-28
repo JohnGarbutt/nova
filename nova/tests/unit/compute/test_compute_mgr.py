@@ -299,11 +299,11 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         call_tracker = mock.Mock()
         call_tracker.clear_events_for_instance.return_value = None
         mgr_class = self.compute.__class__
-        orig_delete = mgr_class._delete_instance
+        orig_delete = mgr_class._delete_instance_locked
         specd_compute = mock.create_autospec(mgr_class)
         # spec out everything except for the method we really want
         # to test, then use call_tracker to verify call sequence
-        specd_compute._delete_instance = orig_delete
+        specd_compute._delete_instance_locked = orig_delete
         specd_compute.host = 'compute'
 
         mock_inst = mock.Mock()
@@ -323,10 +323,10 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         specd_compute._shutdown_instance = _mark_shutdown
 
         mock_bdms = mock.Mock()
-        specd_compute._delete_instance(specd_compute,
-                                       self.context,
-                                       mock_inst,
-                                       mock_bdms)
+        specd_compute._delete_instance_locked(specd_compute,
+                                              self.context,
+                                              mock_inst,
+                                              mock_bdms)
 
         methods_called = [n for n, a, k in call_tracker.mock_calls]
         self.assertEqual(['clear_events_for_instance',
@@ -962,6 +962,51 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         self.assertEqual(0, compute._build_semaphore.balance)
         self.assertIsInstance(compute._build_semaphore,
                               compute_utils.UnlimitedSemaphore)
+
+    def test_operation_semaphores_unlimited_by_default(self):
+        self.assertIs(
+            self.compute._noop_semaphore, self.compute._delete_semaphore)
+        self.assertIs(
+            self.compute._noop_semaphore, self.compute._rebuild_semaphore)
+
+    @mock.patch.object(manager.driver, 'load_compute_driver')
+    def test_operation_semaphores_share_build_when_driver_opts_in(
+            self, mock_load_driver):
+        mock_load_driver.return_value.limit_delete = True
+        mock_load_driver.return_value.limit_rebuild = True
+        self.flags(max_concurrent_builds=123)
+
+        compute = manager.ComputeManager()
+
+        self.assertIs(compute._build_semaphore, compute._delete_semaphore)
+        self.assertIs(compute._build_semaphore, compute._rebuild_semaphore)
+
+    @mock.patch.object(manager.driver, 'load_compute_driver')
+    def test_operation_semaphores_share_noop_build_when_unlimited(
+            self, mock_load_driver):
+        mock_load_driver.return_value.limit_delete = True
+        mock_load_driver.return_value.limit_rebuild = True
+        self.flags(max_concurrent_builds=0)
+
+        compute = manager.ComputeManager()
+
+        self.assertIs(compute._noop_semaphore, compute._build_semaphore)
+        self.assertIs(compute._build_semaphore, compute._delete_semaphore)
+        self.assertIs(compute._build_semaphore, compute._rebuild_semaphore)
+
+    def test_delete_instance_uses_selected_semaphore(self):
+        self.compute._delete_semaphore = mock.MagicMock()
+        instance = objects.Instance(uuid=uuids.instance)
+
+        with mock.patch.object(
+                self.compute, '_delete_instance_locked') as mock_delete:
+            self.compute._delete_instance(
+                self.context, instance, mock.sentinel.bdms)
+
+        self.compute._delete_semaphore.__enter__.assert_called_once_with()
+        self.compute._delete_semaphore.__exit__.assert_called_once()
+        mock_delete.assert_called_once_with(
+            self.context, instance, mock.sentinel.bdms)
 
     @mock.patch('nova.objects.Instance.save')
     @mock.patch('nova.compute.manager.ComputeManager.'
@@ -7266,6 +7311,22 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         instance = fake_instance.fake_instance_obj(self.context)
         ex = exception.InstanceNotFound(instance_id=instance.uuid)
         self._test_rebuild_ex(instance, ex)
+
+    @mock.patch.object(manager.ComputeManager,
+                       '_do_rebuild_instance_with_claim')
+    def test_rebuild_uses_selected_semaphore(self, mock_rebuild):
+        self.compute._rebuild_semaphore = mock.MagicMock()
+        instance = fake_instance.fake_instance_obj(self.context)
+        rt = self._mock_rt()
+
+        self.compute.rebuild_instance(
+            self.context, instance, None, None, None, None, None, None,
+            False, False, False, None, None, {}, None, [], False, None)
+
+        self.compute._rebuild_semaphore.__enter__.assert_called_once_with()
+        self.compute._rebuild_semaphore.__exit__.assert_called_once()
+        mock_rebuild.assert_called_once()
+        rt.finish_evacuation.assert_called_once_with(instance, None, None)
 
     @mock.patch('nova.compute.utils.add_instance_fault_from_exc')
     @mock.patch.object(manager.ComputeManager,

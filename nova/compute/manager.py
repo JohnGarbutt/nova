@@ -650,11 +650,12 @@ class ComputeManager(manager.Manager):
         self._syncs_in_progress = {}
         self.send_instance_updates = (
             CONF.filter_scheduler.track_instance_changes)
+        self._noop_semaphore = compute_utils.UnlimitedSemaphore()
         if CONF.max_concurrent_builds != 0:
             self._build_semaphore = eventlet.semaphore.Semaphore(
                 CONF.max_concurrent_builds)
         else:
-            self._build_semaphore = compute_utils.UnlimitedSemaphore()
+            self._build_semaphore = self._noop_semaphore
         if CONF.max_concurrent_snapshots > 0:
             self._snapshot_semaphore = eventlet.semaphore.Semaphore(
                 CONF.max_concurrent_snapshots)
@@ -681,6 +682,12 @@ class ComputeManager(manager.Manager):
         # initialized before that happens.
         self.service_ref = None
         self.driver = driver.load_compute_driver(self.virtapi, compute_driver)
+        self._delete_semaphore = (
+            self._build_semaphore if self.driver.limit_delete
+            else self._noop_semaphore)
+        self._rebuild_semaphore = (
+            self._build_semaphore if self.driver.limit_rebuild
+            else self._noop_semaphore)
         self.rt = resource_tracker.ResourceTracker(
             self.host, self.driver, reportclient=self.reportclient)
 
@@ -3306,6 +3313,10 @@ class ComputeManager(manager.Manager):
         :param instance: nova.objects.instance.Instance object
         :param bdms: nova.objects.block_device.BlockDeviceMappingList object
         """
+        with self._delete_semaphore:
+            self._delete_instance_locked(context, instance, bdms)
+
+    def _delete_instance_locked(self, context, instance, bdms):
         events = self.instance_events.clear_events_for_instance(instance)
         if events:
             LOG.debug('Events pending at deletion: %(events)s',
@@ -3917,13 +3928,14 @@ class ComputeManager(manager.Manager):
         with self._error_out_instance_on_exception(
                 context, instance, instance_state=instance_state):
             try:
-                self._do_rebuild_instance_with_claim(
-                    context, instance, orig_image_ref,
-                    image_meta, injected_files, new_pass, orig_sys_metadata,
-                    bdms, evacuate, on_shared_storage, preserve_ephemeral,
-                    migration, request_spec, allocs, rebuild_claim,
-                    scheduled_node, limits, accel_uuids, reimage_boot_volume,
-                    target_state)
+                with self._rebuild_semaphore:
+                    self._do_rebuild_instance_with_claim(
+                        context, instance, orig_image_ref,
+                        image_meta, injected_files, new_pass,
+                        orig_sys_metadata, bdms, evacuate, on_shared_storage,
+                        preserve_ephemeral, migration, request_spec, allocs,
+                        rebuild_claim, scheduled_node, limits, accel_uuids,
+                        reimage_boot_volume, target_state)
             except (exception.ComputeResourcesUnavailable,
                     exception.RescheduledException) as e:
                 if isinstance(e, exception.ComputeResourcesUnavailable):

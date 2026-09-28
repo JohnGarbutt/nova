@@ -330,6 +330,12 @@ class ComputeDriver(object):
     # other driver.
     rebalances_nodes = False
 
+    # Whether ComputeManager should use its build semaphore for these
+    # operations. Drivers opt in when build, rebuild, and delete all consume
+    # the same constrained backend resource.
+    limit_delete = False
+    limit_rebuild = False
+
     def __init__(self, virtapi):
         self.virtapi = virtapi
         self._compute_event_callback = None

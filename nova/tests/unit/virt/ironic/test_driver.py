@@ -130,6 +130,12 @@ class IronicDriverTestCase(test.NoDBTestCase):
     def test_validate_driver_loading(self):
         self.assertIsInstance(self.driver, ironic_driver.IronicDriver)
 
+    def test_uses_build_semaphore_for_delete_and_rebuild(self):
+        self.assertTrue(self.driver.limit_delete)
+        self.assertTrue(self.driver.limit_rebuild)
+        self.assertNotIn('limit_delete', self.driver.capabilities)
+        self.assertNotIn('limit_rebuild', self.driver.capabilities)
+
     def test_init_provision_state_semaphore_bounded(self):
         self.flags(max_concurrent_provision_state_requests=3, group='ironic')
 

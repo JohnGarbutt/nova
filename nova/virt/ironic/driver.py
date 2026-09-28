@@ -206,6 +206,11 @@ class IronicDriver(virt_driver.ComputeDriver):
     # This driver is capable of rebalancing nodes between computes.
     rebalances_nodes = True
 
+    # Provisioning, rebuilding, and unprovisioning are all potentially heavy
+    # conductor operations, so share the compute build semaphore.
+    limit_delete = True
+    limit_rebuild = True
+
     def __init__(self, virtapi, read_only=False):
         super().__init__(virtapi)
 

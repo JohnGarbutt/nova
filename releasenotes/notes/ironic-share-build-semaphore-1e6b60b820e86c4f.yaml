@@ -1,0 +1,7 @@
+---
+upgrade:
+  - |
+    For Ironic compute services, the ``[DEFAULT]/max_concurrent_builds``
+    option now provides a shared limit for concurrent instance builds,
+    rebuilds, and final delete cleanup. Other virt drivers continue to run
+    rebuild and delete operations without this limit.

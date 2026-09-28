@@ -661,13 +661,15 @@ Possible values:
 Limits the maximum number of instance builds to run concurrently by
 nova-compute. Compute service can attempt to build an infinite number of
 instances, if asked to do so. This limit is enforced to avoid building
-unlimited instance concurrently on a compute node. This value can be set
-per compute node.
+unlimited instance concurrently on a compute node. Some virt drivers also
+use this as a shared limit for instance rebuild and delete operations. This
+value can be set per compute node.
 
 Possible Values:
 
 * 0 : treated as unlimited.
-* Any positive integer representing maximum concurrent builds.
+* Any positive integer representing maximum concurrent builds, rebuilds, and
+  deletes for drivers that opt in.
 """),
     cfg.IntOpt('max_concurrent_snapshots',
         default=5,
