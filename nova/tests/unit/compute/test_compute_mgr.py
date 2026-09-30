@@ -931,7 +931,8 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
 
     @mock.patch('nova.compute.manager.ComputeManager.'
                 '_do_build_and_run_instance')
-    def _test_max_concurrent_builds(self, mock_dbari):
+    @mock.patch.object(manager.LOG, 'info')
+    def _test_max_concurrent_builds(self, mock_log, mock_dbari):
 
         with mock.patch.object(self.compute,
                                '_build_semaphore') as mock_sem:
@@ -942,6 +943,11 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
                                                     mock.sentinel.request_spec,
                                                     {}, [])
             self.assertEqual(3, mock_sem.__enter__.call_count)
+            mock_log.assert_has_calls([
+                mock.call(
+                    'Acquiring build semaphore for instance build',
+                    instance=instance),
+            ] * 3)
 
     def test_max_concurrent_builds_limited(self):
         self.flags(max_concurrent_builds=2)
@@ -998,11 +1004,16 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         self.compute._delete_semaphore = mock.MagicMock()
         instance = objects.Instance(uuid=uuids.instance)
 
-        with mock.patch.object(
-                self.compute, '_delete_instance_locked') as mock_delete:
+        with test.nested(
+            mock.patch.object(self.compute, '_delete_instance_locked'),
+            mock.patch.object(manager.LOG, 'info'),
+        ) as (mock_delete, mock_log):
             self.compute._delete_instance(
                 self.context, instance, mock.sentinel.bdms)
 
+        mock_log.assert_called_once_with(
+            'Acquiring build semaphore for instance delete',
+            instance=instance)
         self.compute._delete_semaphore.__enter__.assert_called_once_with()
         self.compute._delete_semaphore.__exit__.assert_called_once()
         mock_delete.assert_called_once_with(
@@ -7319,10 +7330,17 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
         instance = fake_instance.fake_instance_obj(self.context)
         rt = self._mock_rt()
 
-        self.compute.rebuild_instance(
-            self.context, instance, None, None, None, None, None, None,
-            False, False, False, None, None, {}, None, [], False, None)
+        with mock.patch.object(manager.LOG, 'info') as mock_log:
+            self.compute.rebuild_instance(
+                self.context, instance, None, None, None, None, None, None,
+                False, False, False, None, None, {}, None, [], False, None)
 
+        mock_log.assert_has_calls([
+            mock.call('Rebuilding instance', instance=instance),
+            mock.call(
+                'Acquiring build semaphore for instance rebuild',
+                instance=instance),
+        ])
         self.compute._rebuild_semaphore.__enter__.assert_called_once_with()
         self.compute._rebuild_semaphore.__exit__.assert_called_once()
         mock_rebuild.assert_called_once()

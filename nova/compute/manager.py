@@ -2365,6 +2365,8 @@ class ComputeManager(manager.Manager):
             # locked because we could wait in line to build this instance
             # for a while and we want to make sure that nothing else tries
             # to do anything with this instance while we wait.
+            LOG.info('Acquiring build semaphore for instance build',
+                     instance=instance)
             with self._build_semaphore:
                 try:
                     result = self._do_build_and_run_instance(*args, **kwargs)
@@ -3313,6 +3315,8 @@ class ComputeManager(manager.Manager):
         :param instance: nova.objects.instance.Instance object
         :param bdms: nova.objects.block_device.BlockDeviceMappingList object
         """
+        LOG.info('Acquiring build semaphore for instance delete',
+                 instance=instance)
         with self._delete_semaphore:
             self._delete_instance_locked(context, instance, bdms)
 
@@ -3928,6 +3932,8 @@ class ComputeManager(manager.Manager):
         with self._error_out_instance_on_exception(
                 context, instance, instance_state=instance_state):
             try:
+                LOG.info('Acquiring build semaphore for instance rebuild',
+                         instance=instance)
                 with self._rebuild_semaphore:
                     self._do_rebuild_instance_with_claim(
                         context, instance, orig_image_ref,
