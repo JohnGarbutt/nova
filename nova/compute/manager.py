@@ -2368,6 +2368,8 @@ class ComputeManager(manager.Manager):
             LOG.info('Acquiring build semaphore for instance build',
                      instance=instance)
             with self._build_semaphore:
+                LOG.info('Acquired build semaphore for instance build',
+                         instance=instance)
                 try:
                     result = self._do_build_and_run_instance(*args, **kwargs)
                 except Exception:
@@ -3318,6 +3320,8 @@ class ComputeManager(manager.Manager):
         LOG.info('Acquiring build semaphore for instance delete',
                  instance=instance)
         with self._delete_semaphore:
+            LOG.info('Acquired build semaphore for instance delete',
+                     instance=instance)
             self._delete_instance_locked(context, instance, bdms)
 
     def _delete_instance_locked(self, context, instance, bdms):
@@ -3935,6 +3939,9 @@ class ComputeManager(manager.Manager):
                 LOG.info('Acquiring build semaphore for instance rebuild',
                          instance=instance)
                 with self._rebuild_semaphore:
+                    LOG.info(
+                        'Acquired build semaphore for instance rebuild',
+                        instance=instance)
                     self._do_rebuild_instance_with_claim(
                         context, instance, orig_image_ref,
                         image_meta, injected_files, new_pass,

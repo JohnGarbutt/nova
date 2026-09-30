@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    The new ``[ironic]/post_delete_delay`` option controls how many seconds
+    the Ironic virt driver waits after successfully deleting an instance. It
+    defaults to 300 seconds and can be set to 0 to disable the delay. When
+    delete throttling is enabled, this delay is included in the time for
+    which the shared build semaphore is held.

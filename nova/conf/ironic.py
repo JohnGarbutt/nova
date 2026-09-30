@@ -78,6 +78,17 @@ Nova Ironic driver will issue.
 
 Set to 0 to allow an unlimited number of concurrent requests.
 """),
+    cfg.IntOpt(
+        'post_delete_delay',
+        default=300,
+        min=0,
+        help="""
+Number of seconds to wait after successfully deleting an instance.
+
+The delay gives Ironic time to continue cleaning a node before Nova starts
+another operation that shares the build semaphore. Set to 0 to disable the
+delay.
+"""),
     cfg.StrOpt(
         'conductor_group',
         deprecated_name='partition_key',

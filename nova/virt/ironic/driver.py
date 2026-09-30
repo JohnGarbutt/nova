@@ -1465,6 +1465,15 @@ class IronicDriver(virt_driver.ComputeDriver):
         LOG.info('Successfully unprovisioned Ironic node %s',
                  node.id, instance=instance)
 
+        post_delete_delay = CONF.ironic.post_delete_delay
+        if post_delete_delay:
+            LOG.info(
+                'Waiting %(delay)s seconds after unprovisioning Ironic node '
+                '%(node)s',
+                {'delay': post_delete_delay, 'node': node.id},
+                instance=instance)
+            time.sleep(post_delete_delay)
+
     def reboot(self, context, instance, network_info, reboot_type,
                block_device_info=None, bad_volumes_callback=None,
                accel_info=None, share_info=None):

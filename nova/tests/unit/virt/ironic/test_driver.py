@@ -123,6 +123,7 @@ class IronicDriverTestCase(test.NoDBTestCase):
         # mock retries configs to avoid sleeps and make tests run quicker
         CONF.set_default('api_max_retries', default=1, group='ironic')
         CONF.set_default('api_retry_interval', default=0, group='ironic')
+        CONF.set_default('post_delete_delay', default=0, group='ironic')
 
     def test_public_api_signatures(self):
         self.assertPublicAPISignatures(driver.ComputeDriver(None), self.driver)
@@ -1822,6 +1823,40 @@ class IronicDriverTestCase(test.NoDBTestCase):
     def test_destroy(self):
         for state in ironic_states.PROVISION_STATE_LIST:
             self._test_destroy(state)
+
+    @mock.patch.object(ironic_driver.LOG, 'info')
+    @mock.patch.object(ironic_driver.time, 'sleep')
+    def test_destroy_post_delete_delay(self, mock_sleep, mock_log):
+        self.flags(post_delete_delay=300, group='ironic')
+        node_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        node = _get_cached_node(
+            driver='fake', id=node_id,
+            provision_state=ironic_states.AVAILABLE)
+        instance = fake_instance.fake_instance_obj(self.ctx, node=node_id)
+        self.mock_conn.nodes.return_value = iter([node])
+
+        self.driver.destroy(self.ctx, instance, None)
+
+        mock_sleep.assert_called_once_with(300)
+        mock_log.assert_any_call(
+            'Waiting %(delay)s seconds after unprovisioning Ironic node '
+            '%(node)s',
+            {'delay': 300, 'node': node_id},
+            instance=instance)
+
+    @mock.patch.object(ironic_driver.time, 'sleep')
+    def test_destroy_post_delete_delay_disabled(self, mock_sleep):
+        self.flags(post_delete_delay=0, group='ironic')
+        node_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        node = _get_cached_node(
+            driver='fake', id=node_id,
+            provision_state=ironic_states.AVAILABLE)
+        instance = fake_instance.fake_instance_obj(self.ctx, node=node_id)
+        self.mock_conn.nodes.return_value = iter([node])
+
+        self.driver.destroy(self.ctx, instance, None)
+
+        mock_sleep.assert_not_called()
 
     @mock.patch.object(ironic_driver.IronicDriver,
                        '_remove_instance_info_from_node')

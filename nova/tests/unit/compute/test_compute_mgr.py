@@ -944,10 +944,17 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
                                                     {}, [])
             self.assertEqual(3, mock_sem.__enter__.call_count)
             mock_log.assert_has_calls([
-                mock.call(
-                    'Acquiring build semaphore for instance build',
-                    instance=instance),
-            ] * 3)
+                call
+                for _ in range(3)
+                for call in (
+                    mock.call(
+                        'Acquiring build semaphore for instance build',
+                        instance=instance),
+                    mock.call(
+                        'Acquired build semaphore for instance build',
+                        instance=instance),
+                )
+            ])
 
     def test_max_concurrent_builds_limited(self):
         self.flags(max_concurrent_builds=2)
@@ -1011,9 +1018,14 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
             self.compute._delete_instance(
                 self.context, instance, mock.sentinel.bdms)
 
-        mock_log.assert_called_once_with(
-            'Acquiring build semaphore for instance delete',
-            instance=instance)
+        mock_log.assert_has_calls([
+            mock.call(
+                'Acquiring build semaphore for instance delete',
+                instance=instance),
+            mock.call(
+                'Acquired build semaphore for instance delete',
+                instance=instance),
+        ])
         self.compute._delete_semaphore.__enter__.assert_called_once_with()
         self.compute._delete_semaphore.__exit__.assert_called_once()
         mock_delete.assert_called_once_with(
@@ -7339,6 +7351,9 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase,
             mock.call('Rebuilding instance', instance=instance),
             mock.call(
                 'Acquiring build semaphore for instance rebuild',
+                instance=instance),
+            mock.call(
+                'Acquired build semaphore for instance rebuild',
                 instance=instance),
         ])
         self.compute._rebuild_semaphore.__enter__.assert_called_once_with()
